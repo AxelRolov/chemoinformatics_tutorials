@@ -175,7 +175,45 @@ atomic_mass = {"H": 1.008, "C": 12.011, "N": 14.007, "O": 15.999, "S": 32.06}
 print(atomic_mass["C"])
 atomic_mass["Cl"] = 35.45            # add a new entry
 print("Cl" in atomic_mass, "Br" in atomic_mass)   # membership test
-print(list(atomic_mass.keys()))
+
+# %% [markdown]
+"""
+A dictionary gives you three **views** of its contents: the keys alone, the values alone, or both together
+as `(key, value)` pairs. You will use all three constantly — `.items()` in particular, because it is what
+lets a `for` loop walk over a table one row at a time.
+"""
+
+# %%
+print("keys()  ->", list(atomic_mass.keys()))
+print("values() ->", list(atomic_mass.values()))
+print("items()  ->", list(atomic_mass.items()))
+
+# %%
+# Each item is a *tuple* (key, value) - which is why a loop can unpack it into two variables
+first_item = list(atomic_mass.items())[0]
+print(first_item, "is a", type(first_item).__name__,
+      "-> symbol", first_item[0], "| mass", first_item[1])
+
+for symbol, mass in atomic_mass.items():          # unpacking in action
+    print(f"  {symbol:>2s} weighs {mass:6.3f} g/mol")
+
+# %%
+# The views are *live*: they follow the dictionary, they are not frozen copies
+values_view = atomic_mass.values()
+print("before:", len(values_view), "values")
+atomic_mass["Br"] = 79.904
+print("after adding Br:", len(values_view), "values")
+
+# %%
+# Because of the views, whole-table questions become one-liners
+print("number of elements  :", len(atomic_mass))
+print("sum of all masses   :", round(sum(atomic_mass.values()), 3))
+print("heaviest element    :", max(atomic_mass, key=atomic_mass.get))   # key= says what to compare by
+print("sorted by mass      :", sorted(atomic_mass.items(), key=lambda kv: kv[1]))
+
+# %%
+# Safe lookup: [] raises KeyError for a missing key, .get() returns a default instead
+print(atomic_mass.get("C"), atomic_mass.get("Xx"), atomic_mass.get("Xx", 0.0))
 
 # %%
 # A set is an unordered collection of unique elements - handy for deduplication.
@@ -197,6 +235,70 @@ print(smiles.count("N"), "N atoms (roughly)")
 print(smiles.lower())
 print(smiles.replace("C", "c"))          # replace (returns a new string, original unchanged)
 print("caffeine".upper(), "  spaces  ".strip(), "a,b,c".split(","))
+
+# %% [markdown]
+r"""
+### Functions and methods: `len(x)` versus `x.count(...)`
+
+You have now met two different ways of calling something, and mixing them up is one of the most common early
+confusions — so let's be explicit.
+
+- A **function** stands on its own and takes the object as an argument: `len(smiles)`, `sorted(energies_kcal)`,
+  `sum(...)`, `type(...)`, `print(...)`, `round(...)`.
+- A **method** belongs to an object and is called *after a dot*: `smiles.count("N")`, `smiles.upper()`,
+  `fruits.append("date")`, `atomic_mass.get("C")`.
+
+A method is simply a function that lives inside a **type**. When you write `smiles.count("N")`, Python finds
+`count` on the type `str` and passes `smiles` in as the first argument. So these two lines are the *same call*:
+
+```python
+smiles.count("N")        # the usual way
+str.count(smiles, "N")   # what it actually does
+```
+
+This is why there is no bare `count(smiles, "N")`: `count` is not a global function, it exists only as
+`str.count`, `list.count`, and so on. Each type brings its own: `"abc".count("a")` counts characters,
+`[1, 2, 2].count(2)` counts list elements. `len()`, by contrast, *is* a global function and works on anything
+that has a length — a string, a list, a dictionary.
+
+**Some jobs exist in both forms, and the difference is not cosmetic:**
+
+| function form | method form | what differs |
+|---|---|---|
+| `sorted(lst)` | `lst.sort()` | `sorted()` returns a **new** list; `.sort()` rearranges `lst` **in place** and returns `None` |
+| `reversed(lst)` | `lst.reverse()` | same distinction |
+| `len(lst)` | — | no method form |
+
+Hence the classic trap: `lst = lst.sort()` silently sets `lst` to `None`. Write `lst.sort()` on its own, or
+`lst = sorted(lst)`.
+
+To find out what an object can do, type `smiles.` and press `Tab` in Colab, or ask `help(str.count)`.
+You will need both styles from the next session on: RDKit gives you functions (`Chem.MolFromSmiles(...)`,
+`Chem.MolToSmiles(mol)`) *and* methods (`mol.GetNumAtoms()`, `atom.GetSymbol()`).
+"""
+
+# %%
+# The same call, written two ways
+print(smiles.count("N"), "==", str.count(smiles, "N"))
+
+# "count" belongs to the type, so every type has its own version
+print("abc".count("a"), [1, 2, 2, 3].count(2))
+
+# len() is a function and accepts anything with a length
+print(len(smiles), len([1, 2, 3]), len(atomic_mass))
+
+# %%
+# Function or method: new object, or modified in place?
+demo = [5.4, -13.5, 42.1, -2.7]           # deliberately NOT in order
+print("sorted(demo) ->", sorted(demo))
+print("demo is unchanged ->", demo)
+
+result = demo.sort()                      # sorts in place...
+print("demo.sort() returned ->", result)  # ...and hands back None
+print("but demo is now ->", demo)
+
+# %%
+help(str.count)
 
 # %% [markdown]
 """
@@ -243,9 +345,15 @@ for i, (f, m) in enumerate(zip(formulas, masses)):
     print(i, f, m)
 
 # %%
-# Iterating over a dictionary
-for symbol, m in atomic_mass.items():
-    print(f"{symbol:>2s}: {m:6.3f}")
+# Iterating over a dictionary: by default a loop walks over the KEYS
+for symbol in atomic_mass:                 # same as "for symbol in atomic_mass.keys()"
+    print(symbol, end=" ")
+print()
+
+# ...over the values with .values(), and over both at once with .items() (section 2)
+print("mean atomic mass:", round(sum(atomic_mass.values()) / len(atomic_mass), 3))
+heavy = [symbol for symbol, m in atomic_mass.items() if m > 20]
+print("elements heavier than 20 g/mol:", heavy)
 
 # %%
 # while loops repeat until a condition becomes False - e.g. a simple titration model

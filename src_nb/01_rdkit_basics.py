@@ -15,7 +15,7 @@
 - write and read **SMILES** strings and understand what "canonical" means;
 - create RDKit molecule objects, draw them, and inspect their atoms and bonds;
 - search for **substructures** with SMARTS patterns and highlight them;
-- compute simple molecular **properties** (MW, logP, TPSA, H-bond donors/acceptors) and apply Lipinski's rule of five;
+- compute simple molecular **properties** — molecular weight, rings, rotatable bonds, hydrogen-bond donors and acceptors, logP — see how each one is *defined*, and apply Lipinski's rule of five;
 - read and write molecule files (SMILES, SDF) and combine RDKit with `pandas`.
 
 ---
@@ -358,35 +358,216 @@ for name, smi in drugs.items():
 
 # %% [markdown]
 """
-## 5. Molecular properties and Lipinski's rule of five
+## 5. Simple molecular properties
 
-RDKit computes hundreds of descriptors (we will study them systematically next session). Today, the handful that
-medicinal chemists use every day. Lipinski's **rule of five** (Ro5) says an orally available drug *tends* to have
-MW ≤ 500, logP ≤ 5, ≤ 5 H-bond donors and ≤ 10 H-bond acceptors.
+A **molecular descriptor** is any number computed from the structure. We start with the ones you can literally
+count on a drawing, because those are the ones you can check by hand — and then add one you cannot:
+
+| property | what it counts | RDKit |
+|---|---|---|
+| molecular weight | sum of the atomic masses | `Descriptors.MolWt` |
+| heavy atoms | all atoms except hydrogens | `mol.GetNumHeavyAtoms()` |
+| rings | rings in the smallest set of smallest rings | `rdMolDescriptors.CalcNumRings` |
+| aromatic rings | of those, the aromatic ones | `rdMolDescriptors.CalcNumAromaticRings` |
+| rotatable bonds | single, non-ring bonds between two non-terminal heavy atoms — a measure of flexibility | `rdMolDescriptors.CalcNumRotatableBonds` |
+| H-bond donors | N–H and O–H groups, which can *give* a hydrogen bond | `rdMolDescriptors.CalcNumHBD` |
+| H-bond acceptors | N and O lone pairs, which can *take* a hydrogen bond | `rdMolDescriptors.CalcNumHBA` |
+| logP | *estimated* lipophilicity — how a molecule partitions between octanol and water | `Descriptors.MolLogP` |
+
+You already computed a molecular weight by hand in session 00, adding up atomic masses from a dictionary.
+`Descriptors.MolWt` does exactly that, using a complete table and the implicit hydrogens RDKit knows about.
+
+The last row is different in kind, and we come back to it in a moment: **logP is not counted, it is predicted**.
 """
 
 # %%
 def basic_properties(mol):
+    """A handful of simple properties. All but the last one you could check on a drawing."""
     return {
-        "MW": Descriptors.MolWt(mol),
-        "logP": Descriptors.MolLogP(mol),        # Crippen atom-contribution logP
+        "MW": round(Descriptors.MolWt(mol), 2),
+        "heavy_atoms": mol.GetNumHeavyAtoms(),
+        "rings": rdMolDescriptors.CalcNumRings(mol),
+        "arom_rings": rdMolDescriptors.CalcNumAromaticRings(mol),
+        "rot_bonds": rdMolDescriptors.CalcNumRotatableBonds(mol),
         "HBD": rdMolDescriptors.CalcNumHBD(mol),
         "HBA": rdMolDescriptors.CalcNumHBA(mol),
-        "TPSA": rdMolDescriptors.CalcTPSA(mol),  # topological polar surface area
-        "rot_bonds": rdMolDescriptors.CalcNumRotatableBonds(mol),
-        "arom_rings": rdMolDescriptors.CalcNumAromaticRings(mol),
+        "logP": round(Descriptors.MolLogP(mol), 2),   # estimated, not counted - see below
     }
 
-pd.DataFrame({name: basic_properties(Chem.MolFromSmiles(smi)) for name, smi in drugs.items()}).T.round(2)
+pd.DataFrame({name: basic_properties(Chem.MolFromSmiles(smi)) for name, smi in drugs.items()}).T
+
+# %% [markdown]
+"""
+### Check it by hand
+
+Take paracetamol, `CC(=O)Nc1ccc(O)cc1`. Draw it on paper and count: one aromatic ring; one phenol O–H and one
+amide N–H, so **2 donors**; the amide N, the carbonyl O and the phenol O are candidate **acceptors**; and the
+bonds you can twist are the ones linking the acetyl group to the nitrogen and the nitrogen to the ring.
+Compare with what RDKit says.
+"""
 
 # %%
-def passes_ro5(mol):
-    p = basic_properties(mol)
-    violations = (p["MW"] > 500) + (p["logP"] > 5) + (p["HBD"] > 5) + (p["HBA"] > 10)
-    return violations <= 1          # Lipinski allowed one violation
+paracetamol = Chem.MolFromSmiles("CC(=O)Nc1ccc(O)cc1")
+display(paracetamol)
+basic_properties(paracetamol)
+
+# %% [markdown]
+"""
+### A descriptor is a *definition*, not a truth
+
+This is the most important idea of the section. "Number of hydrogen-bond donors" sounds objective, but a program
+has to be told what counts as one — and that instruction is a **SMARTS pattern**, exactly like the ones you wrote
+in section 4. Let's spell out the simplest reasonable definitions ourselves and compare with RDKit's.
+"""
+
+# %%
+# A first attempt, written as SMARTS
+donor_smarts = Chem.MolFromSmarts("[N,O;!H0]")   # an N or O carrying at least one hydrogen
+acceptor_try = Chem.MolFromSmarts("[N,O]")       # "any nitrogen or oxygen" as a crude acceptor count
 
 for name, smi in drugs.items():
-    print(f"{name:18s} Ro5: {passes_ro5(Chem.MolFromSmiles(smi))}")
+    m = Chem.MolFromSmiles(smi)
+    print(f"{name:18s} donors: ours {len(m.GetSubstructMatches(donor_smarts))} / RDKit {rdMolDescriptors.CalcNumHBD(m)}"
+          f"   |   acceptors: ours {len(m.GetSubstructMatches(acceptor_try))} / RDKit {rdMolDescriptors.CalcNumHBA(m)}")
+
+# %% [markdown]
+"""
+Look carefully at **sulfamethoxazole**: our crude count says 4 acceptors, RDKit says 5. Everywhere else our count
+is the higher one. Something is wrong with our pattern, not with RDKit.
+
+The bug is a classic. In SMARTS, an **uppercase** `N` means an *aliphatic* nitrogen and a **lowercase** `n` means
+an *aromatic* one — so `[N,O]` silently skips the aromatic `n` and `o` of sulfamethoxazole's isoxazole ring.
+To match an element whatever its aromaticity, use its **atomic number**: `[#7,#8]`.
+"""
+
+# %%
+acceptor_smarts = Chem.MolFromSmarts("[#7,#8]")  # any N or O, aromatic or not
+
+sulfa = Chem.MolFromSmiles(drugs["sulfamethoxazole"])
+print("[N,O]   finds", len(sulfa.GetSubstructMatches(acceptor_try)), "atoms")
+print("[#7,#8] finds", len(sulfa.GetSubstructMatches(acceptor_smarts)), "atoms  <- the isoxazole n and o are now included")
+
+for name, smi in drugs.items():
+    m = Chem.MolFromSmiles(smi)
+    print(f"{name:18s} acceptors: any N or O {len(m.GetSubstructMatches(acceptor_smarts))} / RDKit {rdMolDescriptors.CalcNumHBA(m)}")
+
+# %% [markdown]
+"""
+With the pattern fixed, our count is larger than RDKit's for four of these five molecules and equal for the
+fifth — never smaller. That difference is the real lesson. Counting every N and O is too generous: an amide nitrogen has its lone pair tied up in resonance with the C=O,
+a pyrrole-type N–H points its lone pair into the ring, and a nitro group's oxygens are poor acceptors.
+RDKit's `CalcNumHBA` uses a more careful pattern that leaves such atoms out.
+
+Neither number is "wrong" — they answer slightly different questions. Two consequences you will meet all course long:
+
+1. **Always know which definition produced your numbers.** Two papers both reporting "H-bond acceptors" may not be
+   comparable. The same goes for rotatable bonds, where a *strict* and a *loose* definition are both in use.
+2. **Descriptors you cannot count are still definitions**, just harder to inspect — which brings us to logP.
+"""
+
+# %% [markdown]
+"""
+### Counted versus estimated: what `logP` actually is
+
+Every property above was a count. **logP** is not. It measures lipophilicity — the equilibrium partitioning of a
+compound between octanol and water, $\log_{10}([\text{solute}]_{\text{octanol}} / [\text{solute}]_{\text{water}})$ —
+and that is something you *measure in a lab*, not something you read off a drawing.
+
+`Descriptors.MolLogP` therefore returns a **prediction**. It implements the Crippen method (Wildman & Crippen, 1999):
+every atom is assigned to one of ~70 types, each type carries a contribution fitted to experimental logP values,
+and the molecule's logP is the sum. We can watch that sum happen.
+"""
+
+# %%
+from rdkit.Chem import rdMolDescriptors as rdmd
+
+mol_h = Chem.AddHs(paracetamol)                       # hydrogens carry their own contributions
+contribs = [c for c, _ in rdmd._CalcCrippenContribs(mol_h)]
+print(f"{len(contribs)} atoms contribute; they sum to {sum(contribs):.4f}")
+print(f"Descriptors.MolLogP says              {Descriptors.MolLogP(paracetamol):.4f}")
+
+# the biggest positive and negative contributors
+by_atom = sorted(zip(mol_h.GetAtoms(), contribs), key=lambda t: t[1])
+for atom, c in by_atom[:3] + by_atom[-3:]:
+    print(f"  atom {atom.GetIdx():2d} {atom.GetSymbol():2s} {'(aromatic)' if atom.GetIsAromatic() else '          '} {c:+.4f}")
+
+# %% [markdown]
+"""
+So logP is a **model**, fitted to experimental data, wearing the same interface as a count. That has consequences
+a chemist should keep in mind:
+
+- different implementations disagree — Crippen logP, XLogP3, ALOGPS and an experimental logP for the same compound
+  can differ by a log unit or more, so never mix values from different sources in one dataset;
+- the prediction is only as good as the training set: unusual chemistry gets unusual answers;
+- being a sum of atom contributions, it can miss whole-molecule effects such as an intramolecular hydrogen bond.
+
+None of this makes logP useless — it is one of the most useful numbers in medicinal chemistry. It just means you
+should know which numbers you counted and which ones a model guessed for you. We look at descriptor families
+systematically in session 02.
+"""
+
+# %%
+# Let's see the donors that our SMARTS finds, highlighted on the molecule
+matches = paracetamol.GetSubstructMatches(donor_smarts)
+print("donor atoms:", matches)
+paracetamol.__sssAtoms = [i for m in matches for i in m]
+paracetamol
+
+# %% [markdown]
+"""
+### Lipinski's rule of five
+
+With molecular weight, H-bond counts and logP in hand we can state the best-known drug-likeness heuristic.
+Lipinski's **rule of five** (1997) observes that orally available drugs *tend* to have
+
+MW ≤ 500  ·  logP ≤ 5  ·  H-bond donors ≤ 5  ·  H-bond acceptors ≤ 10
+
+with at most one violation allowed. It is a *tendency* distilled from compounds that reached clinical trials,
+not a law — plenty of approved drugs break it, as we are about to see.
+"""
+
+# %%
+def ro5_violations(mol):
+    """Return which of the four Lipinski criteria the molecule breaks."""
+    p = basic_properties(mol)
+    broken = []
+    if p["MW"] > 500:   broken.append(f"MW {p['MW']:.0f} > 500")
+    if p["logP"] > 5:   broken.append(f"logP {p['logP']:.1f} > 5")
+    if p["HBD"] > 5:    broken.append(f"HBD {p['HBD']} > 5")
+    if p["HBA"] > 10:   broken.append(f"HBA {p['HBA']} > 10")
+    return broken
+
+def passes_ro5(mol):
+    return len(ro5_violations(mol)) <= 1        # Lipinski allows one violation
+
+# our five example drugs, plus two famous rule-breakers
+for name, smi in {**drugs,
+                  "atorvastatin": "CC(C)c1c(C(=O)Nc2ccccc2)c(-c2ccccc2)c(-c2ccc(F)cc2)n1CC[C@@H](O)C[C@@H](O)CC(=O)O",
+                  "erythromycin": "CC[C@H]1OC(=O)[C@H](C)[C@@H](O[C@H]2C[C@@](C)(OC)[C@@H](O)[C@H](C)O2)[C@H](C)"
+                                  "[C@@H](O[C@@H]2O[C@H](C)C[C@@H]([C@H]2O)N(C)C)[C@](C)(O)C[C@@H](C)C(=O)[C@H](C)"
+                                  "[C@@H](O)[C@]1(C)O"}.items():
+    m = Chem.MolFromSmiles(smi)
+    broken = ro5_violations(m)
+    verdict = "passes" if len(broken) <= 1 else "FAILS "
+    print(f"{name:18s} {verdict}  {'; '.join(broken) if broken else 'no violations'}")
+
+# %% [markdown]
+"""
+Atorvastatin (Lipitor, for years the best-selling drug in the world) and erythromycin both break two criteria and
+so "fail" the rule — atorvastatin is too big and too lipophilic, erythromycin is far too big with too many
+acceptors. Neither has had any trouble being a successful oral drug. The rule is a useful prior for a screening
+library, not a verdict on a molecule.
+"""
+
+# %%
+# ...and the rotatable bonds, using the pattern RDKit itself uses
+rot_smarts = Chem.MolFromSmarts("[!$(*#*)&!D1]-!@[!$(*#*)&!D1]")
+ibuprofen = Chem.MolFromSmiles("CC(C)Cc1ccc(C(C)C(=O)O)cc1")
+rb = ibuprofen.GetSubstructMatches(rot_smarts)
+print(f"{len(rb)} rotatable bonds found by the pattern; CalcNumRotatableBonds says "
+      f"{rdMolDescriptors.CalcNumRotatableBonds(ibuprofen)}")
+ibuprofen.__sssAtoms = [i for pair in rb for i in pair]
+ibuprofen
 
 # %% [markdown]
 """
@@ -411,19 +592,44 @@ drugs_df.head()
 props = pd.DataFrame(list(drugs_df["mol"].apply(basic_properties)))
 drugs_df = pd.concat([drugs_df, props], axis=1)
 drugs_df["Ro5"] = drugs_df["mol"].apply(passes_ro5)
-drugs_df[["ChEMBL_ID", "MW", "logP", "HBD", "HBA", "TPSA", "Ro5"]].describe().round(2)
+drugs_df[["MW", "heavy_atoms", "rings", "arom_rings", "rot_bonds", "HBD", "HBA", "logP"]].describe().round(2)
 
 # %%
-print(f"Fraction of approved drugs passing Ro5: {drugs_df['Ro5'].mean():.1%}")
+print(f"Fraction of approved drugs passing the rule of five: {drugs_df['Ro5'].mean():.1%}")
 
 # %%
 import matplotlib.pyplot as plt
-fig, axes = plt.subplots(1, 3, figsize=(12, 3.3))
-for ax, col, limit in zip(axes, ["MW", "logP", "TPSA"], [500, 5, 140]):
-    drugs_df[col].hist(bins=40, ax=ax)
-    ax.axvline(limit, color="red", ls="--")
-    ax.set_title(col)
+fig, axes = plt.subplots(1, 4, figsize=(14, 3.2))
+for ax, col, limit in zip(axes, ["MW", "logP", "rings", "rot_bonds"], [500, 5, None, None]):
+    drugs_df[col].hist(bins=30, ax=ax)
+    if limit is not None:
+        ax.axvline(limit, color="red", ls="--")      # the Lipinski threshold
+    ax.set_xlabel(col); ax.set_ylabel("drugs")
 plt.tight_layout(); plt.show()
+
+# %%
+# How often do the two acceptor definitions actually disagree? Now we have 1203 molecules to ask with.
+naive = drugs_df["mol"].apply(lambda m: len(m.GetSubstructMatches(acceptor_smarts)))
+diff = naive - drugs_df["HBA"]
+print(f"any N or O == RDKit HBA : {(diff == 0).mean():.1%} of drugs")
+print(f"any N or O  > RDKit HBA : {(diff > 0).mean():.1%}")
+print(f"any N or O  < RDKit HBA : {(diff < 0).mean():.1%}")
+
+# the handful going the other way: RDKit's pattern also accepts sulfur, which we never counted
+more = drugs_df[diff < 0]
+print(f"\n{len(more)} drugs where RDKit counts more - all of them contain sulfur:")
+for _, row in more.head(3).iterrows():
+    print("  ", row["ChEMBL_ID"], row["SMILES"][:60])
+print("   sulfur present in all of them:",
+      more["mol"].apply(lambda m: any(a.GetSymbol() == "S" for a in m.GetAtoms())).all())
+
+# %% [markdown]
+"""
+Approved drugs are not spread evenly: most have a molecular weight of 200–500, a logP between 0 and 5, two or
+three rings and a handful of rotatable bonds. The red lines mark two of Lipinski's thresholds, and you can see
+both that the bulk of drugs sit inside them and that a real tail sits outside — the rule describes a tendency,
+not a boundary. Session 04 revisits these filters on a much larger compound set.
+"""
 
 # %%
 # Substructure search over the whole table: which drugs contain a sulfonamide?
@@ -437,7 +643,7 @@ Draw.MolsToGridImage(hits["mol"].head(12).tolist(), molsPerRow=4, subImgSize=(20
 # An interactive grid you can scroll, sort and filter (hover to see values)
 import mols2grid
 mols2grid.display(drugs_df.head(200), smiles_col="SMILES", subset=["img", "ChEMBL_ID", "MW"],
-                  tooltip=["logP", "TPSA", "HBD", "HBA"], size=(160, 120), n_items_per_page=12)
+                  tooltip=["logP", "rings", "HBD", "HBA"], size=(160, 120), n_items_per_page=12)
 
 # %% [markdown]
 """
@@ -497,8 +703,8 @@ Draw.MolsToGridImage([acid_m, amine_m, product], legends=["acid", "amine", "amid
 ## 9. Exercises to finish
 
 1. Among the 1200 drugs, how many contain **at least one fluorine** atom? And a **trifluoromethyl** group `C(F)(F)F`?
-2. Plot `logP` versus `MW` for all drugs, colouring points that fail Ro5 in red.
-3. Find the drug with the **highest TPSA** and draw it. Does it look orally available?
+2. Plot `logP` against `MW` for all drugs, colouring the ones that fail the rule of five in red. Where do the failures sit?
+3. Find the drug with the **most rotatable bonds** and draw it, then the one with the **most rings**. Which looks more like a classical small-molecule drug?
 4. (Harder) Write a function `largest_ring_size(mol)` that returns the size of the largest ring, and find drugs with a macrocycle (ring ≥ 12 atoms).
 """
 
@@ -518,10 +724,13 @@ print(drugs_df["mol"].apply(lambda m: m.HasSubstructMatch(F)).sum(),
 
 colors = np.where(drugs_df["Ro5"], "steelblue", "red")
 plt.scatter(drugs_df["MW"], drugs_df["logP"], c=colors, s=8, alpha=0.6)
+plt.axvline(500, ls="--", c="gray"); plt.axhline(5, ls="--", c="gray")
 plt.xlabel("MW"); plt.ylabel("logP"); plt.show()
+print("drugs failing Ro5:", (~drugs_df["Ro5"]).sum())
 
-top = drugs_df.loc[drugs_df["TPSA"].idxmax()]
-print(top["ChEMBL_ID"], top["TPSA"]); display(top["mol"])
+for col in ["rot_bonds", "rings"]:
+    top = drugs_df.loc[drugs_df[col].idxmax()]
+    print(top["ChEMBL_ID"], col, "=", top[col]); display(top["mol"])
 
 def largest_ring_size(mol):
     rings = mol.GetRingInfo().AtomRings()

@@ -2,8 +2,14 @@
 """
 # 00 · Python crash course for chemists
 
-**Chemoinformatics (UFAZ, L2 S3) — Practical session 0**
-Instructor: Alexey Orlov (Université de Strasbourg / UFAZ)
+**Chemoinformatics practicals — Session 0 of 9**
+
+> **Where this comes from.** These notebooks are a compilation of open teaching material generously published
+> by the chemoinformatics community. The original authors are named in the credits below and in
+> [`CREDITS.md`](https://github.com/AxelRolov/chemoinformatics_tutorials/blob/main/CREDITS.md) — all credit for the
+> substance belongs to them, and we thank them for making their work reusable. This collection updates that material
+> to current library versions, ports it to run start-to-finish in Google Colab, and adds exercises and connective
+> text; the assembly and revision were done with **Claude** (Anthropic) and then reviewed.
 
 > **How to use this notebook.** Click the *Open in Colab* badge above, then run the cells one by one
 > with `Shift + Enter`. Nothing is installed on your computer: everything runs in the cloud.
@@ -16,7 +22,7 @@ Instructor: Alexey Orlov (Université de Strasbourg / UFAZ)
 - load a real chemical dataset (aqueous solubility of ~1100 compounds) and explore it.
 
 ---
-> **Credits.** This notebook is adapted, with modifications for the UFAZ course, from
+> **Credits — thank you to the original authors.** This session adapts, updates and revises material from
 > - *AI for Chemistry* (EPFL CH-457) by the **Schwaller group** — `01a_python_crash_course`, `01b_python_essentials_pandas` ([GitHub](https://github.com/schwallergroup/ai4chem_course), MIT license);
 > - *Practical Programming in Chemistry* (EPFL CH-200) by the **Schwaller group** ([GitHub](https://github.com/schwallergroup/practical-programming-in-chemistry-exercises), MIT license);
 > - **MolSSI** cheminformatics workshop by Jessica A. Nash — `00_python_basics` ([GitHub](https://github.com/MolSSI-Education/molssi-cheminformatics), MIT license);

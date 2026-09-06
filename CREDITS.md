@@ -1,10 +1,12 @@
 # Credits and attribution
 
 These tutorials are **adaptations** of open teaching material generously published by the chemoinformatics community.
-Nothing here would exist without it. Below is the full list of sources, what we took from each, and under which licence.
-Every notebook also names its own sources in its first cell.
+Nothing here would exist without it, and the credit for the substance belongs entirely to the authors listed below —
+**thank you** for publishing your work in a form others can learn from and build on.
 
-If you reuse this material, please keep these attributions and cite the original authors.
+Below is the full list of sources, what was taken from each, and under which licence. Every notebook also names its own
+sources in its first cell. If you reuse this material, please keep these attributions and cite the original authors
+rather than this repository.
 
 ---
 
@@ -130,9 +132,14 @@ ChemCrow (Bran *et al.*, Nat. Mach. Intell. 2024), Coscientist (Boiko *et al.*, 
 
 ---
 
-## What is original here
+## What this compilation adds
 
-The sequencing into nine self-contained sessions; the UFAZ-specific learning objectives, exercises and hidden solutions;
-the unified data set and its curation pipeline (session 05); the pre-trained SMILES LSTM and the REINVENT-style RL and
-genetic-algorithm implementations of session 08; the chemistry tool set, multi-agent system and the agent benchmark of
-session 09; the jupytext build system; and all the connective text.
+Everything of substance above comes from the projects listed. What was added here — updating the code to current
+library versions, porting every notebook to run start-to-finish in Colab, sequencing, exercises, and connective
+text — was assembled and revised **with Claude** (Anthropic) and then reviewed. Specifically: the sequencing into
+nine self-contained sessions; the learning objectives, exercises and hidden solutions; the unified EGFR dataset and its
+curation pipeline (session 05); the pre-trained SMILES LSTM and the REINVENT-style RL and genetic-algorithm
+implementations of session 08; the chemistry tool set, multi-agent system and agent benchmark of session 09; the
+jupytext build system; and the connective text.
+
+None of that would be worth much on its own. If you cite anything from this repository, cite the original projects.

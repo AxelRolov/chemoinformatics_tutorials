@@ -2,8 +2,14 @@
 """
 # 02 · Molecular representations: from structures to numbers
 
-**Chemoinformatics (UFAZ, L2 S3) — Practical session 2**
-Instructor: Alexey Orlov (Université de Strasbourg / UFAZ)
+**Chemoinformatics practicals — Session 2 of 9**
+
+> **Where this comes from.** These notebooks are a compilation of open teaching material generously published
+> by the chemoinformatics community. The original authors are named in the credits below and in
+> [`CREDITS.md`](https://github.com/AxelRolov/chemoinformatics_tutorials/blob/main/CREDITS.md) — all credit for the
+> substance belongs to them, and we thank them for making their work reusable. This collection updates that material
+> to current library versions, ports it to run start-to-finish in Google Colab, and adds exercises and connective
+> text; the assembly and revision were done with **Claude** (Anthropic) and then reviewed.
 
 **Learning goals.** After this session you will be able to
 - name the main families of molecular representations (line notations, graphs, descriptors, fingerprints, 3D) and explain what each one captures and loses;
@@ -14,7 +20,7 @@ Instructor: Alexey Orlov (Université de Strasbourg / UFAZ)
 - generate a 3D **conformer** and compute shape descriptors.
 
 ---
-> **Credits.** Adapted, with modifications for the UFAZ course, from
+> **Credits — thank you to the original authors.** This session adapts, updates and revises material from
 > - **TeachOpenCADD** talktorial **T033 · Molecular representations** (Volkamer lab; [GitHub](https://github.com/volkamerlab/teachopencadd), CC BY 4.0) — Sydow *et al.*, *J. Chem. Inf. Model.* 2019 and *Nucleic Acids Res.* 2022;
 > - *Practical Cheminformatics Tutorials* by **Pat Walters** — fingerprint and similarity material ([GitHub](https://github.com/PatWalters/practical_cheminformatics_tutorials), MIT); the approved-drug list is from his [datafiles](https://github.com/PatWalters/datafiles) (ChEMBL, CC BY-SA 3.0);
 > - **MolSSI** cheminformatics workshop — `03_molecular_similarity` ([GitHub](https://github.com/MolSSI-Education/molssi-cheminformatics), MIT);

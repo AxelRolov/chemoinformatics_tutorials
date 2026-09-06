@@ -2,8 +2,14 @@
 """
 # 06 · Classical machine learning: QSAR/QSPR models
 
-**Chemoinformatics (UFAZ, L2 S3) — Practical session 6**
-Instructor: Alexey Orlov (Université de Strasbourg / UFAZ)
+**Chemoinformatics practicals — Session 6 of 9**
+
+> **Where this comes from.** These notebooks are a compilation of open teaching material generously published
+> by the chemoinformatics community. The original authors are named in the credits below and in
+> [`CREDITS.md`](https://github.com/AxelRolov/chemoinformatics_tutorials/blob/main/CREDITS.md) — all credit for the
+> substance belongs to them, and we thank them for making their work reusable. This collection updates that material
+> to current library versions, ports it to run start-to-finish in Google Colab, and adds exercises and connective
+> text; the assembly and revision were done with **Claude** (Anthropic) and then reviewed.
 
 **Learning goals.** After this session you will be able to
 - formulate a property-prediction problem as supervised **regression** or **classification** (QSPR / QSAR);
@@ -13,7 +19,7 @@ Instructor: Alexey Orlov (Université de Strasbourg / UFAZ)
 - save a model and use it to predict new molecules.
 
 ---
-> **Credits.** Adapted, with modifications for the UFAZ course, from
+> **Credits — thank you to the original authors.** This session adapts, updates and revises material from
 > - **TeachOpenCADD** talktorial **T007 · Ligand-based screening: machine learning** (Volkamer lab; [GitHub](https://github.com/volkamerlab/teachopencadd), CC BY 4.0);
 > - *Practical Cheminformatics Tutorials* by **Pat Walters** — `ml_models/` (`regression_model`, `classification_model`, `cross_validation`, `comparing_*_models`, `QSAR_in_8_lines`) ([GitHub](https://github.com/PatWalters/practical_cheminformatics_tutorials), MIT);
 > - *AI for Chemistry* (EPFL CH-457), **Schwaller group** — `02 - Supervised Learning` ([GitHub](https://github.com/schwallergroup/ai4chem_course), MIT);

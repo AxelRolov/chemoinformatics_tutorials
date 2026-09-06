@@ -2,8 +2,14 @@
 """
 # 03 · Molecular modeling basics: conformers, force fields and molecular dynamics
 
-**Chemoinformatics (UFAZ, L2 S3) — Practical session 3**
-Instructor: Alexey Orlov (Université de Strasbourg / UFAZ)
+**Chemoinformatics practicals — Session 3 of 9**
+
+> **Where this comes from.** These notebooks are a compilation of open teaching material generously published
+> by the chemoinformatics community. The original authors are named in the credits below and in
+> [`CREDITS.md`](https://github.com/AxelRolov/chemoinformatics_tutorials/blob/main/CREDITS.md) — all credit for the
+> substance belongs to them, and we thank them for making their work reusable. This collection updates that material
+> to current library versions, ports it to run start-to-finish in Google Colab, and adds exercises and connective
+> text; the assembly and revision were done with **Claude** (Anthropic) and then reviewed.
 
 > ⚡ **Tip.** This notebook runs on CPU, but is ~20× faster with a GPU: in Colab choose
 > *Runtime → Change runtime type → T4 GPU* before you start.
@@ -16,7 +22,7 @@ Instructor: Alexey Orlov (Université de Strasbourg / UFAZ)
 - situate MD among the tools of computer-aided drug design (docking, binding free energies, 3D representations for ML).
 
 ---
-> **Credits.** Adapted, with modifications for the UFAZ course, from
+> **Credits — thank you to the original authors.** This session adapts, updates and revises material from
 > - **TeachOpenCADD** talktorials **T019 · Molecular dynamics simulation** and **T020 · Analyzing molecular dynamics simulations** (Volkamer lab; [GitHub](https://github.com/volkamerlab/teachopencadd), CC BY 4.0) and **T033** (conformers);
 > - **IBM3202 – Molecular Modeling and Simulation** Colab tutorials `lab07_MDsims`, `lab08_MDanalysis` by the **pb3lab** (Pontificia Universidad Católica de Chile; [GitHub](https://github.com/pb3lab/ibm3202), MIT);
 > - the **OpenMM cookbook & tutorials** ([GitHub](https://github.com/openmm/openmm-cookbook), MIT) — the solvated villin head-piece file `villin.pdb` and the OpenMM test system `alanine-dipeptide-explicit.pdb` ([OpenMM](https://github.com/openmm/openmm), MIT/LGPL);

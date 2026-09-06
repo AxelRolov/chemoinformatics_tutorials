@@ -1,11 +1,37 @@
-# Chemoinformatics tutorials — UFAZ
+# Chemoinformatics tutorials
 
-Practical notebooks for the **Chemoinformatics** course (L2 S3) at the
-[French-Azerbaijani University (UFAZ)](https://ufaz.az), taught by **Alexey Orlov**
-(Laboratoire de Chémoinformatique, Université de Strasbourg).
+A nine-session practical course in chemoinformatics, from a first line of Python to AI agents that design and
+evaluate molecules. **Everything runs in Google Colab** — click a badge, run the cells, no installation.
 
-Nine sessions take students from their first line of Python to AI agents that design and evaluate molecules.
-**Everything runs in Google Colab** — click a badge, run the cells, no installation.
+## This is a compilation — the credit belongs to others
+
+These notebooks are **not original teaching material**. They are assembled from the excellent open resources that
+the chemoinformatics community has published, in particular:
+
+- **[TeachOpenCADD](https://github.com/volkamerlab/teachopencadd)** — the Volkamer lab's teaching platform for
+  computer-aided drug design (talktorials T001–T035)
+- **[Practical Cheminformatics Tutorials](https://github.com/PatWalters/practical_cheminformatics_tutorials)** —
+  Pat Walters' collection, and his blog *Practical Cheminformatics*
+- **[AI for Chemistry (EPFL CH-457)](https://github.com/schwallergroup/ai4chem_course)** and
+  **[Practical Programming in Chemistry (CH-200)](https://github.com/schwallergroup/practical-programming-in-chemistry-exercises)** —
+  the Schwaller group at EPFL
+- **[MolSSI cheminformatics workshop](https://github.com/MolSSI-Education/molssi-cheminformatics)** — Jessica A. Nash
+  and the Molecular Sciences Software Institute
+- **[Deep Learning for Molecules and Materials](https://dmol.pub)** — Andrew D. White
+- **[IBM3202](https://github.com/pb3lab/ibm3202)** — the pb3lab's Colab tutorials on molecular modeling and simulation
+- **[OpenMM](https://github.com/openmm/openmm)** and its cookbook, **[MDAnalysis](https://www.mdanalysis.org)**, and the
+  **[CCPBioSim](https://github.com/CCPBioSim/biosim-analysis-workshop)** analysis workshop
+- **[smolagents](https://github.com/huggingface/smolagents)** (Hugging Face) and the
+  **[LLM agents for chemistry](https://github.com/hesengg/Tutorial_LLM_Agent_Chemistry)** tutorial
+- and of course **[RDKit](https://www.rdkit.org)**, without which none of this exists
+
+**Thank you to all of these authors** for making their work reusable. Every notebook names its own sources in its
+first cell, and [`CREDITS.md`](CREDITS.md) lists all of them with licences.
+
+What this collection adds: the material was **updated** to current library versions, **ported** so that each notebook
+runs start to finish in Colab, **sequenced** into nine self-contained sessions, and given exercises with hidden
+solutions and connective text. That assembly and revision were done **with Claude** (Anthropic) and then reviewed.
+Any errors introduced along the way are ours, not the original authors'.
 
 ## The course
 
@@ -83,10 +109,10 @@ The largest debts are to **TeachOpenCADD** (Volkamer lab), **Practical Cheminfor
 *Deep Learning for Molecules and Materials* (Andrew White), **IBM3202** (pb3lab), the **OpenMM** and **MDAnalysis**
 projects, **smolagents** (Hugging Face) and the *LLM agents for chemistry* tutorial by hesengg.
 
-If you reuse this material, please keep the attributions and cite the original authors.
+If you reuse this material, please keep the attributions and cite the **original authors**, not this repository.
 
 ## Licence
 
-Course material (notebooks, text, figures): **CC BY 4.0** — see [`LICENSE`](LICENSE).
+The compilation (sequencing, updated code, exercises, connective text): **CC BY 4.0** — see [`LICENSE`](LICENSE).
 Code snippets: **MIT**. Adapted third-party material keeps its original licence, as recorded in `CREDITS.md`;
 in particular, content derived from TeachOpenCADD is CC BY 4.0 and content derived from ChEMBL is CC BY-SA 3.0.

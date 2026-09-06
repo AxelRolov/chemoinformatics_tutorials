@@ -2,8 +2,14 @@
 """
 # 07 · Deep learning for molecules: neural networks, graph neural networks and chemical language models
 
-**Chemoinformatics (UFAZ, L2 S3) — Practical session 7**
-Instructor: Alexey Orlov (Université de Strasbourg / UFAZ)
+**Chemoinformatics practicals — Session 7 of 9**
+
+> **Where this comes from.** These notebooks are a compilation of open teaching material generously published
+> by the chemoinformatics community. The original authors are named in the credits below and in
+> [`CREDITS.md`](https://github.com/AxelRolov/chemoinformatics_tutorials/blob/main/CREDITS.md) — all credit for the
+> substance belongs to them, and we thank them for making their work reusable. This collection updates that material
+> to current library versions, ports it to run start-to-finish in Google Colab, and adds exercises and connective
+> text; the assembly and revision were done with **Claude** (Anthropic) and then reviewed.
 
 > ⚡ In Colab choose *Runtime → Change runtime type → T4 GPU* for faster training (everything also runs on CPU in a few minutes).
 
@@ -15,7 +21,7 @@ Instructor: Alexey Orlov (Université de Strasbourg / UFAZ)
 - recognise the pitfalls of deep learning on small chemical datasets (overfitting, need for baselines, splits).
 
 ---
-> **Credits.** Adapted, with modifications for the UFAZ course, from
+> **Credits — thank you to the original authors.** This session adapts, updates and revises material from
 > - **TeachOpenCADD** talktorials **T022 · Ligand-based screening: neural networks** and **T035 · GNN-based molecular property prediction** (Volkamer lab; [GitHub](https://github.com/volkamerlab/teachopencadd), CC BY 4.0);
 > - *AI for Chemistry* (EPFL CH-457), **Schwaller group** — `03 - Intro to Deep Learning` (`01_intro_to_dl`, `02_graph_nns`, `03_gnn_simple_example`; [GitHub](https://github.com/schwallergroup/ai4chem_course), MIT);
 > - A. D. White, *Deep Learning for Molecules and Materials*, chapters *Deep learning*, *Graph neural networks* ([dmol.pub](https://dmol.pub), CC BY-NC 3.0);

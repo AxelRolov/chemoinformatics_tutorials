@@ -2,8 +2,14 @@
 """
 # 09 · Agentic AI for chemistry: LLMs that use tools
 
-**Chemoinformatics (UFAZ, L2 S3) — Practical session 9**
-Instructor: Alexey Orlov (Université de Strasbourg / UFAZ)
+**Chemoinformatics practicals — Session 9 of 9**
+
+> **Where this comes from.** These notebooks are a compilation of open teaching material generously published
+> by the chemoinformatics community. The original authors are named in the credits below and in
+> [`CREDITS.md`](https://github.com/AxelRolov/chemoinformatics_tutorials/blob/main/CREDITS.md) — all credit for the
+> substance belongs to them, and we thank them for making their work reusable. This collection updates that material
+> to current library versions, ports it to run start-to-finish in Google Colab, and adds exercises and connective
+> text; the assembly and revision were done with **Claude** (Anthropic) and then reviewed.
 
 **Learning goals.** After this session you will be able to
 - explain what a large language model (LLM) is, what it *cannot* do alone in chemistry (hallucinated SMILES, arithmetic, current data);
@@ -18,7 +24,7 @@ Instructor: Alexey Orlov (Université de Strasbourg / UFAZ)
 > Mistral or a local model.
 
 ---
-> **Credits.** Adapted, with modifications for the UFAZ course, from
+> **Credits — thank you to the original authors.** This session adapts, updates and revises material from
 > - *Tutorial: LLM agents for chemistry* by **He Seng / hesengg** ([GitHub](https://github.com/hesengg/Tutorial_LLM_Agent_Chemistry)) — the multi-agent structure and the RDKit/tool design;
 > - **smolagents** by Hugging Face ([GitHub](https://github.com/huggingface/smolagents), Apache-2.0) — the agent framework and its `CodeAgent` idea;
 > - **ChemCrow** (Bran *et al.*, *Nat. Mach. Intell.* 2024) and **Coscientist** (Boiko *et al.*, *Nature* 2023) — the chemistry-agent concept;

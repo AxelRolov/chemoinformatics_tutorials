@@ -1,10 +1,15 @@
 # Instructor notes
 
-Practical notes for running these nine sessions at UFAZ (L2 S3, ~2 h per session, hybrid format).
+Practical notes for running these nine sessions as a course (~2 h per session works well, in person or hybrid).
+The material is a compilation of other people's open teaching resources — see [`CREDITS.md`](CREDITS.md) — updated
+and revised with Claude; please pass the credit on to the original authors when you use it.
 
-## Mapping to the course syllabus
+## Mapping to typical course objectives
 
-| Syllabus objective (*compétences visées*) | Sessions |
+If your syllabus is written as learning outcomes, this is roughly how the sessions map onto the outcomes an
+introductory chemoinformatics course usually states.
+
+| Learning objective | Sessions |
 |---|---|
 | define the scope, objectives and applications of chemoinformatics | 00 intro, 01, and the closing discussion of 09 |
 | identify and use major chemical data resources and databases | **04** |

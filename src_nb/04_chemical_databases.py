@@ -2,8 +2,14 @@
 """
 # 04 · Chemical databases: PubChem, ChEMBL, the PDB and open datasets
 
-**Chemoinformatics (UFAZ, L2 S3) — Practical session 4**
-Instructor: Alexey Orlov (Université de Strasbourg / UFAZ)
+**Chemoinformatics practicals — Session 4 of 9**
+
+> **Where this comes from.** These notebooks are a compilation of open teaching material generously published
+> by the chemoinformatics community. The original authors are named in the credits below and in
+> [`CREDITS.md`](https://github.com/AxelRolov/chemoinformatics_tutorials/blob/main/CREDITS.md) — all credit for the
+> substance belongs to them, and we thank them for making their work reusable. This collection updates that material
+> to current library versions, ports it to run start-to-finish in Google Colab, and adds exercises and connective
+> text; the assembly and revision were done with **Claude** (Anthropic) and then reviewed.
 
 **Learning goals.** After this session you will be able to
 - name the major public chemical data resources and what each one is good for;
@@ -17,7 +23,7 @@ Instructor: Alexey Orlov (Université de Strasbourg / UFAZ)
 > shipped with the course so you can continue.
 
 ---
-> **Credits.** Adapted, with modifications for the UFAZ course, from
+> **Credits — thank you to the original authors.** This session adapts, updates and revises material from
 > - **TeachOpenCADD** talktorials **T001 · Compound data acquisition (ChEMBL)**, **T011 · Querying online API webservices**, **T013 · Data acquisition from PubChem** and **T008 · Protein data acquisition (PDB)** (Volkamer lab; [GitHub](https://github.com/volkamerlab/teachopencadd), CC BY 4.0). The cached EGFR dataset `EGFR_compounds_chembl.csv` is the T001 output (ChEMBL data, CC BY-SA 3.0);
 > - *Practical Cheminformatics Tutorials* by **Pat Walters** — `ChEMBL_data_curation`, `working_with_ChEMBL_drug_data` ([GitHub](https://github.com/PatWalters/practical_cheminformatics_tutorials), MIT) and `chembl-downloader` by Charles Tapley Hoyt ([GitHub](https://github.com/cthoyt/chembl-downloader), MIT);
 > - **OpenADMET** challenge tutorials and datasets ([GitHub](https://github.com/OpenADMET), Apache-2.0; ExpansionRx data CC BY 4.0);

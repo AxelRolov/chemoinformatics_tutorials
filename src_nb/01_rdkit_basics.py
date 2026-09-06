@@ -2,8 +2,14 @@
 """
 # 01 · RDKit basics: molecules as Python objects
 
-**Chemoinformatics (UFAZ, L2 S3) — Practical session 1**
-Instructor: Alexey Orlov (Université de Strasbourg / UFAZ)
+**Chemoinformatics practicals — Session 1 of 9**
+
+> **Where this comes from.** These notebooks are a compilation of open teaching material generously published
+> by the chemoinformatics community. The original authors are named in the credits below and in
+> [`CREDITS.md`](https://github.com/AxelRolov/chemoinformatics_tutorials/blob/main/CREDITS.md) — all credit for the
+> substance belongs to them, and we thank them for making their work reusable. This collection updates that material
+> to current library versions, ports it to run start-to-finish in Google Colab, and adds exercises and connective
+> text; the assembly and revision were done with **Claude** (Anthropic) and then reviewed.
 
 **Learning goals.** After this session you will be able to
 - write and read **SMILES** strings and understand what "canonical" means;
@@ -13,7 +19,7 @@ Instructor: Alexey Orlov (Université de Strasbourg / UFAZ)
 - read and write molecule files (SMILES, SDF) and combine RDKit with `pandas`.
 
 ---
-> **Credits.** Adapted, with modifications for the UFAZ course, from
+> **Credits — thank you to the original authors.** This session adapts, updates and revises material from
 > - **MolSSI** cheminformatics workshop by Jessica A. Nash — `01_molecule_representation`, `02_rdkit_intro` ([GitHub](https://github.com/MolSSI-Education/molssi-cheminformatics), MIT);
 > - *Practical Cheminformatics Tutorials* by **Pat Walters** — `A_Whirlwind_Introduction_To_The_RDKit`, `SMILES_tutorial`, `SMARTS_tutorial` ([GitHub](https://github.com/PatWalters/practical_cheminformatics_tutorials), MIT). The list of approved drugs (`chembl_drugs.smi`) comes from Pat Walters' [datafiles](https://github.com/PatWalters/datafiles) repository (ChEMBL data, CC BY-SA 3.0);
 > - *AI for Chemistry* (EPFL CH-457), **Schwaller group** — `01d_rdkit_basics` ([GitHub](https://github.com/schwallergroup/ai4chem_course), MIT);

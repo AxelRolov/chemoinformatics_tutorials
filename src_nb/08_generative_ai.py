@@ -2,8 +2,14 @@
 """
 # 08 · Generative AI for molecules: designing new compounds
 
-**Chemoinformatics (UFAZ, L2 S3) — Practical session 8**
-Instructor: Alexey Orlov (Université de Strasbourg / UFAZ)
+**Chemoinformatics practicals — Session 8 of 9**
+
+> **Where this comes from.** These notebooks are a compilation of open teaching material generously published
+> by the chemoinformatics community. The original authors are named in the credits below and in
+> [`CREDITS.md`](https://github.com/AxelRolov/chemoinformatics_tutorials/blob/main/CREDITS.md) — all credit for the
+> substance belongs to them, and we thank them for making their work reusable. This collection updates that material
+> to current library versions, ports it to run start-to-finish in Google Colab, and adds exercises and connective
+> text; the assembly and revision were done with **Claude** (Anthropic) and then reviewed.
 
 > ⚡ In Colab choose *Runtime → Change runtime type → T4 GPU*. A pre-trained model is provided, so nothing here takes more than a few minutes.
 
@@ -15,7 +21,7 @@ Instructor: Alexey Orlov (Université de Strasbourg / UFAZ)
 - discuss what generative models cannot do: synthesisability, novelty ≠ usefulness, and how the field evaluates itself (GuacaMol, MOSES).
 
 ---
-> **Credits.** Adapted, with modifications for the UFAZ course, from
+> **Credits — thank you to the original authors.** This session adapts, updates and revises material from
 > - *AI for Chemistry* (EPFL CH-457), **Schwaller group** — `05 - Generative Models` and `06 - Generative Models 2 / SMILES-LSTM-Walkthrough` ([GitHub](https://github.com/schwallergroup/ai4chem_course), MIT);
 > - *Practical Cheminformatics Tutorials* by **Pat Walters** — `generative/SMILES_RNN` ([GitHub](https://github.com/PatWalters/practical_cheminformatics_tutorials), MIT);
 > - **TeachOpenCADD** talktorial **T034 · RNN-based molecular property prediction / SMILES generation** (Volkamer lab; [GitHub](https://github.com/volkamerlab/teachopencadd), CC BY 4.0);

@@ -2,8 +2,14 @@
 """
 # 05 · Exploratory data analysis: standardisation, scaffolds, clustering and chemical space
 
-**Chemoinformatics (UFAZ, L2 S3) — Practical session 5**
-Instructor: Alexey Orlov (Université de Strasbourg / UFAZ)
+**Chemoinformatics practicals — Session 5 of 9**
+
+> **Where this comes from.** These notebooks are a compilation of open teaching material generously published
+> by the chemoinformatics community. The original authors are named in the credits below and in
+> [`CREDITS.md`](https://github.com/AxelRolov/chemoinformatics_tutorials/blob/main/CREDITS.md) — all credit for the
+> substance belongs to them, and we thank them for making their work reusable. This collection updates that material
+> to current library versions, ports it to run start-to-finish in Google Colab, and adds exercises and connective
+> text; the assembly and revision were done with **Claude** (Anthropic) and then reviewed.
 
 **Learning goals.** After this session you will be able to
 - **standardise** chemical structures (salts, charges, tautomers) and deduplicate a dataset properly;
@@ -16,7 +22,7 @@ Instructor: Alexey Orlov (Université de Strasbourg / UFAZ)
 We work with the EGFR inhibitor dataset built in session 04 (≈5 500 compounds from ChEMBL).
 
 ---
-> **Credits.** Adapted, with modifications for the UFAZ course, from
+> **Credits — thank you to the original authors.** This session adapts, updates and revises material from
 > - **TeachOpenCADD** talktorials **T002 · Molecular filtering: ADME and lead-likeness**, **T003 · Unwanted substructures**, **T005 · Compound clustering** (Volkamer lab; [GitHub](https://github.com/volkamerlab/teachopencadd), CC BY 4.0); the EGFR data are the T001 output (ChEMBL, CC BY-SA 3.0);
 > - *Practical Cheminformatics Tutorials* by **Pat Walters** — `taylor_butina_clustering`, `kmeans_clustering`, `find_scaffolds`, `visualizing_chemical_space`, `ChEMBL_data_curation` ([GitHub](https://github.com/PatWalters/practical_cheminformatics_tutorials), MIT) and his blog posts on data curation; the hERG dataset for the exercise is from the same repository;
 > - *AI for Chemistry* (EPFL CH-457), **Schwaller group** — `04 - Unsupervised Learning` (`Clustering`, `DimensionalityReduction`; [GitHub](https://github.com/schwallergroup/ai4chem_course), MIT);

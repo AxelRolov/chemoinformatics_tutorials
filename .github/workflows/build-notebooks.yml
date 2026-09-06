@@ -1,0 +1,56 @@
+name: build notebooks
+
+# Rebuilds the notebooks from the jupytext sources in src_nb/ and checks that the
+# committed .ipynb files are in sync and valid. Does NOT execute them (that needs
+# the full scientific stack and several minutes per notebook).
+
+on:
+  push:
+    paths: ["src_nb/**", ".github/workflows/build-notebooks.yml"]
+  pull_request:
+    paths: ["src_nb/**"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install the build tools
+        run: pip install jupytext nbformat
+
+      - name: Rebuild the notebooks
+        run: python src_nb/build.py
+
+      - name: Fail if the committed notebooks are out of date
+        run: |
+          if ! git diff --quiet -- notebooks/; then
+            echo "::error::notebooks/ is out of sync with src_nb/. Run 'python src_nb/build.py' and commit the result."
+            git diff --stat -- notebooks/
+            exit 1
+          fi
+          echo "notebooks/ is up to date"
+
+      - name: Check that every notebook has a Colab badge and no stored outputs
+        run: |
+          python - <<'PY'
+          import json, sys
+          from pathlib import Path
+          bad = []
+          for p in sorted(Path("notebooks").glob("*.ipynb")):
+              nb = json.loads(p.read_text())
+              first = "".join(nb["cells"][0]["source"])
+              if "colab-badge" not in first:
+                  bad.append(f"{p}: missing Colab badge")
+              for i, c in enumerate(nb["cells"]):
+                  if c["cell_type"] == "code" and c.get("outputs"):
+                      bad.append(f"{p}: cell {i} has stored outputs")
+          if bad:
+              print("\n".join(bad)); sys.exit(1)
+          print("all notebooks OK")
+          PY

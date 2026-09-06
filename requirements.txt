@@ -1,0 +1,48 @@
+# Local/offline installation of the full course stack.
+# On Google Colab you do NOT need this file: each notebook installs what it needs in its setup cell.
+#
+#   python -m venv .venv && source .venv/bin/activate
+#   pip install -r requirements.txt
+
+# core
+numpy>=1.26
+pandas>=2.0
+scipy
+matplotlib
+seaborn
+plotly
+tqdm
+requests
+jupyterlab
+
+# chemistry
+rdkit>=2024.3
+selfies
+mols2grid
+py3Dmol
+chembl_webresource_client
+pubchempy
+chembl_structure_pipeline
+
+# machine learning
+scikit-learn>=1.4
+xgboost
+umap-learn
+joblib
+
+# deep learning (session 07-08); install a CUDA build of torch if you have a GPU
+torch>=2.2
+torch_geometric
+transformers
+
+# molecular dynamics (session 03)
+openmm>=8.1
+mdanalysis
+
+# agents (session 09)
+smolagents[litellm]
+
+# notebook build system (instructors)
+jupytext
+nbformat
+nbclient

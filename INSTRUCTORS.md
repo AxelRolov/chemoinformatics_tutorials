@@ -87,6 +87,12 @@ python src_nb/build.py 04 --execute   # rebuild + run session 04, report errors
 python src_nb/build.py                # rebuild all, outputs stripped
 ```
 
+`build.py` is **reproducible on purpose**: rebuilding an unchanged source produces byte-identical
+notebooks. nbformat 4.5+ writes a random per-cell `id` on every save, so the build overrides them with
+deterministic ids derived from each cell's content (`assign_stable_ids`). Without that, the notebooks would
+differ on every rebuild and the "in sync with `src_nb`" check in CI could never pass. Keep that property if
+you change the build.
+
 Conventions used in the sources:
 - markdown cells are triple-quoted strings after `# %% [markdown]`;
 - the first markdown cell carries the title, learning goals and the credits block (the build script prepends the Colab badge);

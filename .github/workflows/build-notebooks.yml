@@ -3,6 +3,12 @@ name: build notebooks
 # Rebuilds the notebooks from the jupytext sources in src_nb/ and checks that the
 # committed .ipynb files are in sync and valid. Does NOT execute them (that needs
 # the full scientific stack and several minutes per notebook).
+#
+# For this check to be meaningful, `src_nb/build.py` must be *reproducible*: rebuilding
+# an unchanged source has to produce byte-identical notebooks. nbformat >= 4.5 assigns a
+# random per-cell "id" on every write, so build.py overrides those with deterministic,
+# content-derived ids (see assign_stable_ids there). If you change build.py, keep that
+# property or this job will fail on every push.
 
 on:
   push:
@@ -21,8 +27,10 @@ jobs:
         with:
           python-version: "3.11"
 
+      # Bounded ranges: jupytext decides how the sources split into cells, so a major
+      # version bump could legitimately change the output. Widen deliberately, not by accident.
       - name: Install the build tools
-        run: pip install jupytext nbformat
+        run: pip install "jupytext>=1.19,<2" "nbformat>=5.10,<6"
 
       - name: Rebuild the notebooks
         run: python src_nb/build.py
@@ -32,25 +40,61 @@ jobs:
           if ! git diff --quiet -- notebooks/; then
             echo "::error::notebooks/ is out of sync with src_nb/. Run 'python src_nb/build.py' and commit the result."
             git diff --stat -- notebooks/
+            echo "First differing hunks:"
+            git diff -- notebooks/ | head -40
             exit 1
           fi
           echo "notebooks/ is up to date"
 
-      - name: Check that every notebook has a Colab badge and no stored outputs
+      - name: Check the build is reproducible
+        run: |
+          python src_nb/build.py
+          if ! git diff --quiet -- notebooks/; then
+            echo "::error::build.py is not reproducible: two consecutive builds differ."
+            git diff --stat -- notebooks/
+            exit 1
+          fi
+          echo "a second build is a no-op"
+
+      - name: Validate structure (badge, no stored outputs, unique cell ids)
         run: |
           python - <<'PY'
-          import json, sys
+          import json, re, sys
           from pathlib import Path
-          bad = []
+          import nbformat
+
+          problems = []
           for p in sorted(Path("notebooks").glob("*.ipynb")):
               nb = json.loads(p.read_text())
               first = "".join(nb["cells"][0]["source"])
-              if "colab-badge" not in first:
-                  bad.append(f"{p}: missing Colab badge")
+
+              # the Colab badge must exist and point at this very notebook
+              m = re.search(r"blob/main/notebooks/([^\"]+\.ipynb)", first)
+              if not m:
+                  problems.append(f"{p}: no Colab badge")
+              elif m.group(1) != p.name:
+                  problems.append(f"{p}: badge points at {m.group(1)}")
+
+              if "Credits" not in first:
+                  problems.append(f"{p}: first cell has no credits block")
+
+              ids = [c.get("id") for c in nb["cells"]]
+              if len(set(ids)) != len(ids):
+                  problems.append(f"{p}: duplicate cell ids")
+              bad = [i for i in ids if not i or not re.fullmatch(r"[a-zA-Z0-9\-_]{1,64}", i)]
+              if bad:
+                  problems.append(f"{p}: invalid cell ids {bad[:3]}")
+
               for i, c in enumerate(nb["cells"]):
                   if c["cell_type"] == "code" and c.get("outputs"):
-                      bad.append(f"{p}: cell {i} has stored outputs")
-          if bad:
-              print("\n".join(bad)); sys.exit(1)
-          print("all notebooks OK")
+                      problems.append(f"{p}: cell {i} has stored outputs")
+                  if c["cell_type"] == "code" and c.get("execution_count") is not None:
+                      problems.append(f"{p}: cell {i} has an execution count")
+
+              nbformat.validate(nbformat.reads(p.read_text(), as_version=4))
+
+          if problems:
+              print("\n".join(f"::error::{x}" for x in problems))
+              sys.exit(1)
+          print(f"all notebooks OK")
           PY

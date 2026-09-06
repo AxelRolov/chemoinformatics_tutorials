@@ -13,6 +13,7 @@ in Google Colab.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import re
 import sys
 import time
@@ -38,6 +39,27 @@ def colab_badge(nb_name: str) -> str:
     )
 
 
+def assign_stable_ids(nb) -> None:
+    """Give every cell a deterministic id.
+
+    nbformat >= 4.5 stores a per-cell "id" and generates a *random* one on every write, which would make
+    `build.py` non-reproducible: rebuilding an unchanged source produced a diff in every cell, so the
+    "notebooks are in sync with src_nb" check in CI could never pass.
+
+    The id is derived from the cell's own content, so editing one cell does not renumber the others
+    (an index-based scheme would rewrite every id below an inserted cell). Identical cells - two empty
+    "YOUR CODE HERE" cells, say - get a numeric suffix to keep ids unique, as nbformat requires.
+    """
+    seen: dict[str, int] = {}
+    for cell in nb.cells:
+        digest = hashlib.sha256(
+            (cell.cell_type + "\x00" + "".join(cell.source)).encode("utf-8")
+        ).hexdigest()[:12]
+        n = seen.get(digest, 0)
+        seen[digest] = n + 1
+        cell["id"] = digest if n == 0 else f"{digest}-{n}"
+
+
 def convert(src: Path) -> Path:
     nb = jupytext.read(src)
     nb_name = src.with_suffix(".ipynb").name
@@ -52,6 +74,7 @@ def convert(src: Path) -> Path:
             c.execution_count = None
         c.metadata.pop("jupyter", None)
         c.metadata.pop("lines_to_next_cell", None)
+    assign_stable_ids(nb)
     nb.metadata = {
         "kernelspec": {"display_name": "Python 3", "language": "python", "name": "python3"},
         "language_info": {"name": "python"},
@@ -59,6 +82,7 @@ def convert(src: Path) -> Path:
         "accelerator": "GPU" if src.stem[:2] in {"06", "07", "09"} else "None",
     }
     nb.metadata.pop("jupytext", None)
+    nb.nbformat, nb.nbformat_minor = 4, 5
     out = OUT / nb_name
     nbformat.validate(nb)
     nbformat.write(nb, out)

@@ -1,8 +1,8 @@
 # %% [markdown]
 """
-# 05 · Exploratory data analysis: standardisation, scaffolds, clustering and chemical space
+# 04 · Exploratory data analysis: standardisation, scaffolds, clustering and chemical space
 
-**Chemoinformatics practicals — Session 5 of 9**
+**Chemoinformatics practicals — Session 4 of 9**
 
 > **Where this comes from.** These notebooks are a compilation of open teaching material generously published
 > by the chemoinformatics community. The original authors are named in the credits below and in
@@ -19,7 +19,7 @@
 - **cluster** molecules by similarity (Butina, k-means) and pick diverse representatives;
 - visualise **chemical space** with PCA and UMAP, and spot **activity cliffs**.
 
-We work with the EGFR inhibitor dataset built in session 04 (≈5 500 compounds from ChEMBL).
+We work with the EGFR inhibitor dataset built in session 03 (≈5 500 compounds from ChEMBL).
 
 ---
 > **Credits — thank you to the original authors.** This session adapts, updates and revises material from
@@ -158,7 +158,7 @@ print("clean dataset:", data.shape)
 # %% [markdown]
 """
 ### Censored values
-ChEMBL also stores inequalities (`standard_relation` = `>` or `<`, e.g. "IC50 > 10 µM"). We excluded them in session 04 by
+ChEMBL also stores inequalities (`standard_relation` = `>` or `<`, e.g. "IC50 > 10 µM"). We excluded them in session 03 by
 filtering `relation="="`. For classification they can be used as inactives; for regression they must be dropped or handled
 with special (survival-type) loss functions.
 
@@ -278,7 +278,7 @@ plt.show()
 
 The **Bemis–Murcko scaffold** removes all side chains and keeps ring systems plus the linkers between them.
 The **generic** scaffold further replaces every atom by carbon and every bond by a single bond (pure topology).
-Scaffolds tell us how *diverse* a set is and are the basis of the **scaffold split** used to evaluate models honestly (session 06).
+Scaffolds tell us how *diverse* a set is and are the basis of the **scaffold split** used to evaluate models honestly (session 05).
 """
 
 # %%
@@ -498,7 +498,7 @@ fig.show()
 """
 ### Where does the dataset sit relative to approved drugs?
 Projecting two sets into the *same* map is how we check whether a training set covers the region we care about
-(the **applicability domain** question of session 06).
+(the **applicability domain** question of session 05).
 """
 
 # %%
@@ -631,5 +631,5 @@ for col in ["logP", "MW", "TPSA"]:
 - Probst & Reymond, *Visualization of very large high-dimensional data sets as minimum spanning trees* (TMAP), J. Cheminform. **2020**.
 - Pat Walters' blog, *Practical Cheminformatics*: <https://practicalcheminformatics.blogspot.com>.
 
-Next session: **06 · Classical machine learning** — QSAR models on the curated dataset.
+Next session: **05 · Classical machine learning** — QSAR models on the curated dataset.
 """

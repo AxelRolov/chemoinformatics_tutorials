@@ -1,8 +1,8 @@
 # %% [markdown]
 """
-# 03 · Molecular modeling basics: conformers, force fields and molecular dynamics
+# 09 · Molecular modeling basics: conformers, force fields and molecular dynamics
 
-**Chemoinformatics practicals — Session 3 of 9**
+**Chemoinformatics practicals — Session 9 of 9**
 
 > **Where this comes from.** These notebooks are a compilation of open teaching material generously published
 > by the chemoinformatics community. The original authors are named in the credits below and in
@@ -273,7 +273,7 @@ Key practical ingredients:
 | **long-range electrostatics** | Coulomb decays slowly | Particle Mesh Ewald (PME), cutoff 1 nm |
 | **explicit solvent** | water matters! | TIP3P water model + ions |
 
-A 2 fs step means 500,000 steps per nanosecond; a modern GPU does ~1 µs/day for a small protein. Today we will simulate
+A 2 fs step means 500,000 steps per nanosecond; a modern GPU does ~1 µs/day for a small protein. We will simulate
 **alanine dipeptide** (the "hydrogen atom of protein folding": one φ/ψ pair) in a box of ~750 water molecules.
 """
 
@@ -518,5 +518,19 @@ sampling (≥ 100 ns, several replicas). TeachOpenCADD **T019** walks through ex
 - Braun *et al.*, *Best practices for foundations in molecular simulations*, Living J. Comp. Mol. Sci. **2019**, 1, 5957.
 - Höltje, Sippl, Rognan, Folkers, *Molecular Modeling: Basic Principles and Applications* (course bibliography).
 
-Next session: **04 · Chemical databases** — where the data comes from.
+---
+
+**This was the last session. Congratulations!** Over nine notebooks you went from `print("Hello")` to curating real
+bioactivity data, building and validating QSAR models, training graph networks, generating molecules and putting an
+LLM to work with chemistry tools — and finally to giving molecules coordinates and letting them move.
+
+Notice what this last session changes about the previous eight. Everything from session 02 onwards described molecules
+as **graphs**: a fingerprint, a descriptor vector, an adjacency matrix. That approximation carried us a long way, and
+for most property-prediction tasks it still wins. But a ligand does not bind as a graph; it binds as a particular
+conformation of a flexible object, in water, to a protein that is itself moving. Molecular modeling is where that
+physics comes back, and it is the bridge to what the field is building next: 3D and equivariant neural networks,
+structure-based generative models, co-folding, and free-energy methods.
+
+Two habits are worth keeping from all nine sessions: *look at your data before you model it*, and *ask what your
+representation is throwing away*.
 """

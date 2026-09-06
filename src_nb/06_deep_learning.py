@@ -1,8 +1,8 @@
 # %% [markdown]
 """
-# 07 · Deep learning for molecules: neural networks, graph neural networks and chemical language models
+# 06 · Deep learning for molecules: neural networks, graph neural networks and chemical language models
 
-**Chemoinformatics practicals — Session 7 of 9**
+**Chemoinformatics practicals — Session 6 of 9**
 
 > **Where this comes from.** These notebooks are a compilation of open teaching material generously published
 > by the chemoinformatics community. The original authors are named in the credits below and in
@@ -15,7 +15,7 @@
 
 **Learning goals.** After this session you will be able to
 - explain what a neural network is (layers, activations, loss, gradient descent, back-propagation) and train one with **PyTorch**;
-- build a **multilayer perceptron** on fingerprints and compare it with the random forest of session 06;
+- build a **multilayer perceptron** on fingerprints and compare it with the random forest of session 05;
 - turn molecules into graphs and train a **graph neural network** (message passing) with PyTorch Geometric;
 - use a pre-trained **chemical language model** (ChemBERTa) as a feature extractor — your first *foundation model*;
 - recognise the pitfalls of deep learning on small chemical datasets (overfitting, need for baselines, splits).
@@ -107,7 +107,7 @@ Everything else in deep learning is this loop with (i) a bigger function, (ii) a
 
 ## 2. A multilayer perceptron on fingerprints
 
-Same problem as session 06: predict ESOL solubility from Morgan fingerprints. We'll keep a **validation set** apart from
+Same problem as session 05: predict ESOL solubility from Morgan fingerprints. We'll keep a **validation set** apart from
 the test set to decide when to stop training.
 """
 
@@ -199,7 +199,7 @@ with the random forest — deep learning's advantage appears when it can *learn 
 ### Exercise 2.1
 1. Set `dropout=0` and `weight_decay=0`. What happens to the gap between the two curves?
 2. Try `hidden=(64,)` and `hidden=(1024, 512, 128)`. Bigger is better?
-3. Train on **descriptors** instead of fingerprints (standardise them with `StandardScaler` first!). Compare with session 06.
+3. Train on **descriptors** instead of fingerprints (standardise them with `StandardScaler` first!). Compare with session 05.
 """
 
 # %%
@@ -233,7 +233,7 @@ Xd = Xd.loc[:, Xd.notna().all() & (Xd.nunique() > 1)]
 Xd = StandardScaler().fit_transform(Xd).astype(np.float32)
 m, _ = train_mlp(MLP(Xd.shape[1]), Xd, y_norm, idx_train, idx_val, verbose=False)
 print("MLP on descriptors: test RMSE", round(rmse(y[idx_test], predict_mlp(m, Xd[idx_test])), 3))
-# ~0.7, i.e. as good as the GCN and the boosted trees of session 06 - the representation, not the model, was the bottleneck.
+# ~0.7, i.e. as good as the GCN and the boosted trees of session 05 - the representation, not the model, was the bottleneck.
 ```
 </details>
 """
@@ -499,7 +499,7 @@ chemprop predict --test-path new_molecules.csv --model-paths chemprop_esol --pre
 ```
 
 Pat Walters' `run_chemprop.ipynb` shows the Python API. For a small dataset expect RMSE ≈ 0.6 on ESOL — similar to the
-best classical models of session 06, which is the honest message: **on ~1000 molecules, deep learning rarely beats a good
+best classical models of session 05, which is the honest message: **on ~1000 molecules, deep learning rarely beats a good
 random forest**; it shines with 10⁴–10⁶ molecules, multi-task data, or when 3D/quantum information is included.
 """
 
@@ -509,16 +509,16 @@ random forest**; it shines with 10⁴–10⁶ molecules, multi-task data, or whe
 
 | situation | recommended first try |
 |---|---|
-| < 1 000 molecules, single endpoint | RF / XGBoost on descriptors + fingerprints (session 06) |
+| < 1 000 molecules, single endpoint | RF / XGBoost on descriptors + fingerprints (session 05) |
 | 1 000 – 100 000 molecules | D-MPNN (Chemprop) or GIN with proper validation; compare with RF |
 | many related endpoints (ADMET panel) | multi-task GNN / fine-tuned chemical language model |
 | 3D-dependent property (binding, conformational energies) | 3D / equivariant GNNs (SchNet, DimeNet, e3nn; TeachOpenCADD T036) |
 | very little data | pre-trained embeddings + linear model; transfer learning |
 
-Always report a **baseline**, use a **scaffold split**, and estimate **uncertainty** (session 06).
+Always report a **baseline**, use a **scaffold split**, and estimate **uncertainty** (session 05).
 
 ## Exercises
-1. Train the GCN for **EGFR classification** (binary cross-entropy: `F.binary_cross_entropy_with_logits`, ROC-AUC). Compare with the RF of session 06 on the same scaffold split.
+1. Train the GCN for **EGFR classification** (binary cross-entropy: `F.binary_cross_entropy_with_logits`, ROC-AUC). Compare with the RF of session 05 on the same scaffold split.
 2. Add **edge features** (bond type one-hot) using `torch_geometric.nn.NNConv` or `GINEConv`.
 3. Data augmentation: train the MLP on fingerprints of *randomised* SMILES (`Chem.MolToSmiles(m, doRandom=True)`) — does it change anything? Why not? Then think about what randomised SMILES would change for a *sequence* model.
 4. (Project) Fine-tune ChemBERTa end-to-end on ESOL with a regression head (`AutoModelForSequenceClassification`, `num_labels=1`).
@@ -530,5 +530,5 @@ Always report a **baseline**, use a **scaffold split**, and estimate **uncertain
 - Ahmad *et al.*, *ChemBERTa-2: towards chemical foundation models*, arXiv 2022.
 - PyTorch Geometric tutorials: <https://pytorch-geometric.readthedocs.io/en/latest/get_started/introduction.html>.
 
-Next session: **08 · Generative AI** — networks that *write* molecules.
+Next session: **07 · Generative AI** — networks that *write* molecules.
 """

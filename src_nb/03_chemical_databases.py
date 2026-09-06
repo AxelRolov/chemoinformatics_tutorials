@@ -1,8 +1,8 @@
 # %% [markdown]
 """
-# 04 · Chemical databases: PubChem, ChEMBL, the PDB and open datasets
+# 03 · Chemical databases: PubChem, ChEMBL, the PDB and open datasets
 
-**Chemoinformatics practicals — Session 4 of 9**
+**Chemoinformatics practicals — Session 3 of 9**
 
 > **Where this comes from.** These notebooks are a compilation of open teaching material generously published
 > by the chemoinformatics community. The original authors are named in the credits below and in
@@ -257,7 +257,7 @@ if CHEMBL_UP:
 """
 ### From raw records to a modelling table
 
-Downloaded data is never ready to use. Typical steps (we go deeper in session 05):
+Downloaded data is never ready to use. Typical steps (we go deeper in session 04):
 1. keep only rows with a value and the right units (nM);
 2. convert to pIC50;
 3. one molecule may have several measurements → aggregate (median);
@@ -298,7 +298,7 @@ Draw.MolsToGridImage(top["mol"].tolist(), molsPerRow=3, subImgSize=(230, 170),
 
 # %%
 egfr.drop(columns=["mol"]).to_csv("EGFR_pIC50.csv", index=False)
-print("saved EGFR_pIC50.csv - we reuse this file in sessions 05–06")
+print("saved EGFR_pIC50.csv - we reuse this file in sessions 04–05")
 
 # %% [markdown]
 """
@@ -399,7 +399,7 @@ if HF_UP:
 # %% [markdown]
 """
 Note how **sparse** real data is: most molecules were measured on only a few endpoints, and clearance values span three
-orders of magnitude (hence the log scale). Both facts matter when we model (sessions 06–07).
+orders of magnitude (hence the log scale). Both facts matter when we model (sessions 05–06).
 
 The `datasets` library gives the same data with streaming, splits and versioning:
 
@@ -499,7 +499,7 @@ print(r["total_count"], "EGFR entries; first ten:", [x["identifier"] for x in r[
 - The **PDB** answers "what does the target look like, and how does the ligand bind?"
 - **Hub-hosted datasets** (Hugging Face, TDC, Polaris) give ML-ready tables with known splits — use them to *benchmark*, not to replace understanding the raw data.
 
-Every dataset we build today raises the questions of **session 05**: are the structures standardised? Are there duplicates
+Every dataset we build today raises the questions of **session 04**: are the structures standardised? Are there duplicates
 or contradictory measurements? Which scaffolds dominate? Where does the data live in chemical space?
 
 ## Further reading
@@ -508,5 +508,5 @@ or contradictory measurements? Which scaffolds dominate? Where does the data liv
 - Burley *et al.*, *RCSB Protein Data Bank*, Nucleic Acids Res. **2025**; RCSB API: <https://data.rcsb.org>.
 - Walters, *ChEMBL data curation* notebook, and Landrum & Riniker, *Combining IC50 or Ki values from different sources is a source of significant noise*, J. Chem. Inf. Model. **2024**, 64, 1560.
 
-Next session: **05 · Exploratory data analysis** — standardisation, clustering, scaffolds and chemical space.
+Next session: **04 · Exploratory data analysis** — standardisation, clustering, scaffolds and chemical space.
 """

@@ -71,7 +71,7 @@ needs a **finite list of numbers or symbols**. Every representation is a *choice
 | **3D representations** | conformers, point clouds, surfaces, voxels | geometry, shape, electrostatics | (need conformer sampling) | docking, 3D-QSAR, MD |
 | **learned embeddings** | vectors from a neural network | whatever the training task needs | interpretability | modern ML |
 
-Today we work through the first six rows; learned representations come in sessions 07–08.
+Today we work through the first six rows; learned representations come in sessions 06–07.
 """
 
 # %% [markdown]
@@ -101,7 +101,7 @@ for smi in ["C[C@H](N)C(=O)O", "C[C@@H](N)C(=O)O", "CC(N)C(=O)O"]:
 """
 ### SELFIES: a robust alternative to SMILES
 
-Generative models (session 08) write molecules character by character. With SMILES, a single wrong character
+Generative models (session 07) write molecules character by character. With SMILES, a single wrong character
 often gives an **invalid** molecule (unclosed ring, wrong valence). **SELFIES** (SELF-referencIng Embedded Strings,
 Krenn *et al.* 2020) were designed so that *every* string decodes to a valid molecule. Let's test that claim.
 """
@@ -162,7 +162,7 @@ print(f"Validity after 2 random mutations:  SMILES {v_smi:.0%}   SELFIES {v_sel:
 
 Chemists have always drawn molecules as graphs. For a computer, a graph is an **adjacency matrix** $A$
 ($A_{ij}=1$ if atoms $i$ and $j$ are bonded) plus a **feature matrix** $X$ (one row per atom: element, charge,
-aromaticity, …). This is exactly the input of a **graph neural network** (session 07).
+aromaticity, …). This is exactly the input of a **graph neural network** (session 06).
 """
 
 # %%
@@ -371,7 +371,7 @@ $$T(a,b) = \frac{|a \cap b|}{|a \cup b|} = \frac{c}{n_a + n_b - c}$$
 
 where $c$ is the number of bits on in both. $T=1$ for identical fingerprints, $0$ when they share nothing.
 The **Dice** coefficient $2c/(n_a+n_b)$ is a common alternative. Rules of thumb (ECFP4): $T>0.7$ "very similar",
-$0.4$–$0.7$ "related", $<0.3$ "different" — but always calibrate on your own data (session 05).
+$0.4$–$0.7$ "related", $<0.3$ "different" — but always calibrate on your own data (session 04).
 
 The **similarity principle** (Johnson & Maggiora, 1990): similar molecules *tend* to have similar properties.
 It underlies virtual screening, clustering, and every nearest-neighbour model. Its exceptions are called **activity cliffs**.
@@ -484,7 +484,7 @@ display(Draw.MolsToGridImage(drugs["mol"].iloc[idx].tolist(), legends=[f"{i} T={
 
 Everything so far was 2D. Many properties (binding to a protein, crystal packing, spectroscopy) depend on **3D shape**.
 RDKit can generate plausible 3D **conformers** with the ETKDG algorithm (distance geometry + experimental torsion
-preferences) and refine them with a force field (MMFF94). We look at this properly in session 03; here is a first taste.
+preferences) and refine them with a force field (MMFF94). We look at this properly in session 09; here is a first taste.
 """
 
 # %%
@@ -589,5 +589,5 @@ display(Draw.MolsToGridImage([Chem.MolFromSmiles(s) for s in top.index], legends
 - L. David *et al.*, *Molecular representations in AI-driven drug discovery: a review and practical guide*, J. Cheminform. **2020**, 12, 56.
 - TeachOpenCADD T033 for a longer discussion incl. protein representations.
 
-Next session: **03 · Molecular modeling and molecular dynamics** — conformers, force fields, and simulating motion.
+Next session: **03 · Chemical databases** — where the data comes from.
 """

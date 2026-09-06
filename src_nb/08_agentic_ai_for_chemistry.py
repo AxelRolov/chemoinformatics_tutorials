@@ -1,8 +1,8 @@
 # %% [markdown]
 """
-# 09 · Agentic AI for chemistry: LLMs that use tools
+# 08 · Agentic AI for chemistry: LLMs that use tools
 
-**Chemoinformatics practicals — Session 9 of 9**
+**Chemoinformatics practicals — Session 8 of 9**
 
 > **Where this comes from.** These notebooks are a compilation of open teaching material generously published
 > by the chemoinformatics community. The original authors are named in the credits below and in
@@ -29,7 +29,7 @@
 > - **smolagents** by Hugging Face ([GitHub](https://github.com/huggingface/smolagents), Apache-2.0) — the agent framework and its `CodeAgent` idea;
 > - **ChemCrow** (Bran *et al.*, *Nat. Mach. Intell.* 2024) and **Coscientist** (Boiko *et al.*, *Nature* 2023) — the chemistry-agent concept;
 > - `MauricioCafiero/CheMLAgent` and `hoon-ock/AgentD` (drug-discovery agents) for task inspiration;
-> - our own sessions 01–08 for the tools (RDKit descriptors, similarity, the EGFR QSAR model).
+> - our own sessions 01–07 for the tools (RDKit descriptors, similarity, the EGFR QSAR model).
 """
 
 # %%
@@ -259,7 +259,7 @@ print(substructure_search("CC(=O)Oc1ccccc1C(=O)O", "[CX3](=O)[OX2H1]"))
 """
 ### A tool that wraps *our own* model
 
-Sessions 05–06 produced a curated EGFR dataset and a QSAR model. Wrapping it as a tool lets the agent use in-house
+Sessions 04–05 produced a curated EGFR dataset and a QSAR model. Wrapping it as a tool lets the agent use in-house
 knowledge that no LLM has seen — this is where agents become useful in a real lab.
 """
 
@@ -318,7 +318,7 @@ print(predict_egfr_activity("CC(=O)Oc1ccccc1C(=O)O")[:120])                     
 # %% [markdown]
 """
 > Gefitinib comes back with a probability *below* 0.5 even though it is an approved EGFR inhibitor. This is not a bug in
-> the agent: it is the label noise we diagnosed in session 06 (the cached dataset kept one IC50 record per compound, and
+> the agent: it is the label noise we diagnosed in session 05 (the cached dataset kept one IC50 record per compound, and
 > gefitinib's happens to be 515 nM, just under our 6.3 threshold). A good agent reports what the tool says; a good chemist
 > knows what the tool was trained on. Keep this in mind when reading the agent's answers below.
 """
@@ -508,8 +508,8 @@ because the numbers come from RDKit. **That difference is the whole point of too
 
 ## 8. Exercises
 
-1. **Add a tool** `sa_score(smiles)` returning the synthetic accessibility score (session 08) and ask the agent to rank the
-   molecules generated in session 08 by "interesting *and* makeable".
+1. **Add a tool** `sa_score(smiles)` returning the synthetic accessibility score (session 07) and ask the agent to rank the
+   molecules generated in session 07 by "interesting *and* makeable".
 2. **Add a scaffold tool** returning the Murcko scaffold, and ask the agent whether two compounds are scaffold hops of each other.
 3. **Break the agent**: ask it something outside its tools ("what is the melting point of gefitinib?"). Does it admit it does not know,
    or invent a number? Improve the instructions so that it refuses cleanly.
@@ -603,7 +603,11 @@ print(f"accuracy without get_smiles: {ok / len(BENCHMARK):.0%}")
 
 ---
 
-**This was the last session. Congratulations!** You have gone from `print("Hello")` to agents that design and evaluate molecules.
-Everything you built is in this repository — reuse it for your projects, and keep the habit that runs through all nine notebooks:
-*look at your data, question your model, and verify what the machine tells you.*
+That closes the data-and-AI thread of the course: you have gone from `print("Hello")` to agents that design and
+evaluate molecules, working throughout with **2D** representations of structure.
+
+Next session: **09 · Molecular modeling and molecular dynamics** — we drop the 2D approximation, give molecules
+coordinates, and watch them move. It is the natural place to end, because it shows what the representations of
+session 02 were leaving out, and where the next generation of models (3D and equivariant networks, structure-based
+generation, co-folding) is heading.
 """

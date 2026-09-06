@@ -1,8 +1,8 @@
 # %% [markdown]
 """
-# 06 · Classical machine learning: QSAR/QSPR models
+# 05 · Classical machine learning: QSAR/QSPR models
 
-**Chemoinformatics practicals — Session 6 of 9**
+**Chemoinformatics practicals — Session 5 of 9**
 
 > **Where this comes from.** These notebooks are a compilation of open teaching material generously published
 > by the chemoinformatics community. The original authors are named in the credits below and in
@@ -25,7 +25,7 @@
 > - *AI for Chemistry* (EPFL CH-457), **Schwaller group** — `02 - Supervised Learning` ([GitHub](https://github.com/schwallergroup/ai4chem_course), MIT);
 > - **MolSSI** cheminformatics workshop — `06_sklearn_fitting`, `07_ESOL_fitting` (MIT);
 > - A. D. White, *Deep Learning for Molecules and Materials*, chapter *Machine learning* ([dmol.pub](https://dmol.pub), CC BY-NC 3.0).
-> Data: ESOL (Delaney 2004, via MoleculeNet) and the curated EGFR set from session 05 (ChEMBL, CC BY-SA 3.0).
+> Data: ESOL (Delaney 2004, via MoleculeNet) and the curated EGFR set from session 04 (ChEMBL, CC BY-SA 3.0).
 """
 
 # %%
@@ -63,7 +63,7 @@ np.random.seed(SEED)
 the structure: $y = f(\text{molecule}) + \varepsilon$. We do not know $f$, so we *learn* it from examples.
 The recipe never changes:
 
-1. **Data**: molecules with measured $y$ (session 04–05: curated, deduplicated, standardised);
+1. **Data**: molecules with measured $y$ (session 03–04: curated, deduplicated, standardised);
 2. **Features** $X$: numbers describing each molecule (session 02: descriptors, fingerprints);
 3. **Model**: a family of functions $f_\theta$ (linear, tree ensemble, kernel, neural network) and a **loss** to minimise;
 4. **Validation**: estimate how well $f$ predicts molecules it has *never seen*;
@@ -358,7 +358,7 @@ print(classification_report(y_egfr[te], (probas["Random forest"] >= 0.5).astype(
 ### 4.2 The split matters: random vs scaffold split
 
 A random split puts close analogues of every test molecule into the training set — the model is tested on *interpolation*.
-In real projects you predict **new chemotypes**. A **scaffold split** puts whole scaffolds (session 05) either in train or
+In real projects you predict **new chemotypes**. A **scaffold split** puts whole scaffolds (session 04) either in train or
 in test, which is much closer to that situation. Watch the metrics drop.
 """
 
@@ -561,7 +561,7 @@ pd.DataFrame({"P(active)": p_active.round(2), "nearest training similarity": nn_
 > dataset (TeachOpenCADD T001) kept the *first* IC50 record ChEMBL returned for each compound; for gefitinib that is a
 > 515 nM value from one particular assay, whereas other assays report IC50 well below 10 nM. Three lessons:
 > a model is only as good as its labels; hard thresholds turn small measurement differences into label flips; and when
-> you build your own dataset (session 04) aggregate *all* measurements (median) rather than keeping the first.
+> you build your own dataset (session 03) aggregate *all* measurements (median) rather than keeping the first.
 
 ## 7. QSAR in 8 lines
 Everything above, condensed (after Pat Walters' *QSAR in 8 lines*). Understand each line and you understand the session.
@@ -612,5 +612,5 @@ print(f"R² = {r2_score(y_te, model.predict(X_te)):.2f}")
 - Walters & Barzilay, *Applications of deep learning in molecule generation and molecular property prediction*, Acc. Chem. Res. **2021** — for what comes next.
 - scikit-learn user guide: <https://scikit-learn.org/stable/user_guide.html>.
 
-Next session: **07 · Deep learning** — neural networks on fingerprints and graphs.
+Next session: **06 · Deep learning** — neural networks on fingerprints and graphs.
 """

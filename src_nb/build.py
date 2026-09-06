@@ -56,7 +56,7 @@ def convert(src: Path) -> Path:
         "kernelspec": {"display_name": "Python 3", "language": "python", "name": "python3"},
         "language_info": {"name": "python"},
         "colab": {"provenance": [], "toc_visible": True, "name": nb_name},
-        "accelerator": "GPU" if src.stem[:2] in {"03", "07", "08"} else "None",
+        "accelerator": "GPU" if src.stem[:2] in {"06", "07", "09"} else "None",
     }
     nb.metadata.pop("jupytext", None)
     out = OUT / nb_name

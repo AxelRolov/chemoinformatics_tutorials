@@ -1,8 +1,8 @@
 # %% [markdown]
 """
-# 08 · Generative AI for molecules: designing new compounds
+# 07 · Generative AI for molecules: designing new compounds
 
-**Chemoinformatics practicals — Session 8 of 9**
+**Chemoinformatics practicals — Session 7 of 9**
 
 > **Where this comes from.** These notebooks are a compilation of open teaching material generously published
 > by the chemoinformatics community. The original authors are named in the credits below and in
@@ -71,7 +71,7 @@ def fetch(filename, subdir="data"):
 """
 ## 1. What is a generative model?
 
-A **discriminative** model (sessions 06–07) learns $p(y \mid x)$: given a molecule, predict a property.
+A **discriminative** model (sessions 05–06) learns $p(y \mid x)$: given a molecule, predict a property.
 A **generative** model learns $p(x)$: the distribution of molecules itself, so that we can **sample new ones**.
 
 Main families in chemistry:
@@ -700,14 +700,14 @@ Draw.MolsToGridImage(ga_pop_naive[:6], molsPerRow=3, subImgSize=(240, 190),
   transformer priors and rich scoring components. `ReinventCommunity` has ready-made notebooks.
 - **Structure-based generation**: models that generate *inside a protein pocket* (DiffSBDD, TargetDiff, PocketXMol) — 3D diffusion models.
 - **Foundation & multimodal models**: molecular generation conditioned on text ("a soluble EGFR inhibitor without a nitro group"), the
-  bridge to session 09.
+  bridge to session 08.
 
 ## Exercises
 1. **Scaffold hopping**: change the scoring function to reward molecules similar to gefitinib in *pharmacophore* terms but with a
    *different* Murcko scaffold: `score = sim × (scaffold != gefitinib_scaffold)`. What comes out?
 2. **SELFIES**: repeat section 2 using SELFIES tokens (session 02). Validity should be 100 % by construction — check it, and discuss what this buys you.
 3. **Latent-space exploration**: train a small VAE on 5 000 ZINC molecules (see the Schwaller group's `Molecular Generative Models` notebook) and interpolate between two molecules in latent space.
-4. **Honest evaluation**: take your 100 best RL molecules, filter them by SA score < 4, PAINS-free (session 05) and Ro5-compliant. How many survive?
+4. **Honest evaluation**: take your 100 best RL molecules, filter them by SA score < 4, PAINS-free (session 04) and Ro5-compliant. How many survive?
 
 ## Further reading
 - Segler *et al.*, *Generating focused molecule libraries for drug discovery with RNNs*, ACS Cent. Sci. **2018**, 4, 120.
@@ -716,5 +716,5 @@ Draw.MolsToGridImage(ga_pop_naive[:6], molsPerRow=3, subImgSize=(240, 190),
 - Gao & Coley, *The synthesizability of molecules proposed by generative models*, J. Chem. Inf. Model. **2020**, 60, 5714.
 - Polishchuk, *CReM: chemically reasonable mutations framework*, J. Cheminform. **2020**, 12, 28.
 
-Next session: **09 · Agentic AI** — LLMs that use chemistry tools.
+Next session: **08 · Agentic AI** — LLMs that use chemistry tools.
 """

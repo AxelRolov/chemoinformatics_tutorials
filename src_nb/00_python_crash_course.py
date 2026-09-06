@@ -308,13 +308,13 @@ help(str.count)
 """
 
 # %%
-logP = 3.2
-if logP > 5:
-    print("very lipophilic")
-elif logP > 3:
-    print("lipophilic")
+mw = 194.19                    # caffeine, the molecular weight we build up by hand below
+if mw > 500:
+    print("large - beyond the usual small-molecule range")
+elif mw > 150:
+    print("typical small-molecule size")
 else:
-    print("hydrophilic")
+    print("very small - fragment-sized")
 
 # %%
 # for loops iterate over any collection
@@ -431,8 +431,10 @@ help(gibbs)   # the docstring is what help() shows - write them!
 """
 ### Exercise 4.1 — a classification function
 
-Write a function `classify_logP(logP)` that returns the string `"hydrophilic"`, `"lipophilic"` or `"very lipophilic"`
-(same thresholds as in section 3), then apply it to every value in `[−1.2, 0.5, 3.4, 6.1]` with a list comprehension.
+The number of **rotatable bonds** (single bonds you can twist, excluding those in rings) is a simple measure of how
+flexible a molecule is. Write a function `classify_flexibility(n)` returning `"rigid"` for 0–2 rotatable bonds,
+`"flexible"` for 3–7, and `"very flexible"` above that. Then apply it to every value in `[0, 2, 5, 11]` with a
+list comprehension.
 """
 
 # %%
@@ -445,14 +447,14 @@ Write a function `classify_logP(logP)` that returns the string `"hydrophilic"`, 
 <details><summary><b>Solution</b></summary>
 
 ```python
-def classify_logP(logP):
-    if logP > 5:
-        return "very lipophilic"
-    elif logP > 3:
-        return "lipophilic"
-    return "hydrophilic"
+def classify_flexibility(n):
+    if n > 7:
+        return "very flexible"
+    elif n > 2:
+        return "flexible"
+    return "rigid"
 
-print([classify_logP(x) for x in [-1.2, 0.5, 3.4, 6.1]])
+print([classify_flexibility(x) for x in [0, 2, 5, 11]])
 ```
 </details>
 """
@@ -596,9 +598,21 @@ df = df.rename(columns={
     "Number of H-Bond Donors": "HBD",
     "Number of Rings": "rings",
     "Number of Rotatable Bonds": "rot_bonds",
-    "Polar Surface Area": "TPSA",
 })
 df.head(3)
+
+# %% [markdown]
+"""
+The file carries two more columns — "Polar Surface Area" and "Minimum Degree" — that describe the molecules in
+ways we have not discussed. Let's **drop** them and keep only the properties whose meaning is plain from the
+structure: molecular weight, hydrogen-bond donors, rings and rotatable bonds. (Computed descriptors such as polar
+surface area and lipophilicity arrive in session 02, where we can say properly what they mean and how they are
+estimated.)
+"""
+
+# %%
+df = df.drop(columns=["Polar Surface Area", "Minimum Degree"])
+print(list(df.columns))
 
 # %%
 df.describe()      # summary statistics of numeric columns
@@ -671,9 +685,9 @@ print(open("esol_processed.csv").read()[:300])
 ### Exercise 7.1
 
 1. How many compounds have **no** rotatable bonds (`rot_bonds == 0`)? What is their mean `logS`?
-2. Which are the 5 compounds with the **highest TPSA**? Show name, TPSA and logS.
-3. Make a scatter plot of `logS` versus `TPSA`, coloured by the number of rings (`c=df["rings"]`, add `plt.colorbar()`).
-   Is there a trend?
+2. Which are the 5 compounds with the **most rings**? Show name, rings and logS.
+3. Make a scatter plot of `logS` versus `MW`, coloured by the number of hydrogen-bond donors
+   (`c=df["HBD"]`, add `plt.colorbar()`). Do heavier compounds dissolve less well? Do donors help?
 """
 
 # %%
@@ -689,10 +703,12 @@ print(open("esol_processed.csv").read()[:300])
 rigid = df[df["rot_bonds"] == 0]
 print(len(rigid), rigid["logS"].mean())
 
-print(df.nlargest(5, "TPSA")[["name", "TPSA", "logS"]])
+print(df.nlargest(5, "rings")[["name", "rings", "logS"]])
 
-plt.scatter(df["TPSA"], df["logS"], c=df["rings"], s=10, cmap="viridis")
-plt.colorbar(label="rings"); plt.xlabel("TPSA"); plt.ylabel("logS"); plt.show()
+plt.scatter(df["MW"], df["logS"], c=df["HBD"], s=10, cmap="viridis")
+plt.colorbar(label="H-bond donors"); plt.xlabel("MW"); plt.ylabel("logS"); plt.show()
+print("logS vs MW  correlation:", round(df["MW"].corr(df["logS"]), 2))
+print("logS vs HBD correlation:", round(df["HBD"].corr(df["logS"]), 2))
 ```
 </details>
 """

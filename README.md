@@ -5,7 +5,7 @@ evaluate molecules. **Everything runs in Google Colab** — click a badge, run t
 
 ## This is a compilation — the credit belongs to others
 
-These notebooks are **not original teaching material**. They are assembled from the excellent open resources that
+These notebooks are assembled from the excellent open resources that
 the chemoinformatics community has published, in particular:
 
 - **[TeachOpenCADD](https://github.com/volkamerlab/teachopencadd)** — the Volkamer lab's teaching platform for

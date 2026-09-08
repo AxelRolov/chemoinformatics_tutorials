@@ -35,7 +35,7 @@ introductory chemoinformatics course usually states.
 | 05 | 120 min (all models ≈ 5 min total) | no | no | 04 |
 | 06 | 90 min (MLP + GCN ≈ 1 min GPU, 1 min CPU each) | **yes** | no | 05 |
 | 07 | 90 min (RL ≈ 3 min, GA ≈ 2 min) | **yes** | no | 02, 06 |
-| 08 | 90 min | no | **yes** (free Gemini key) | 05 |
+| 08 | 90 min | no | **yes** (DeepSeek key) | 05 |
 | 09 | 90 min (MD cell ≈ 2 min CPU / 10 s GPU) | **yes** | no | 01–02 |
 
 Sessions 04 → 05 → 08 form a chain through the EGFR dataset; `data/EGFR_curated.csv` is committed so a student who
@@ -43,9 +43,14 @@ missed session 04 can still do 05 and 08.
 
 ## Practical set-up
 
-- **Before session 08**, ask students to create a free Gemini API key (<https://aistudio.google.com/apikey>) and add it as
-  a Colab secret named `GEMINI_API_KEY`. Doing this live costs 15 minutes. If your institution prefers another provider,
-  change one line: `MODEL_ID` in the notebook (LiteLLM handles OpenAI, Anthropic, Mistral, Azure, Ollama…).
+- **Before session 08**, sort out API keys. The notebook is set up for **DeepSeek**
+  (<https://platform.deepseek.com/api_keys>, secret name `DEEPSEEK_API_KEY`, model `deepseek/deepseek-v4-flash`).
+  DeepSeek is a paid API with no free tier, so decide in advance whether you hand out one departmental key or ask
+  students to create their own; either way the notebook's usage is a handful of short requests per run. Doing the
+  key set-up live costs about 15 minutes. Changing provider is one line — `MODEL_ID` plus the secret name in
+  `get_api_key()` — and LiteLLM also handles Gemini (free tier, no card), OpenAI, Anthropic, Mistral, Azure and Ollama.
+  If a smaller model produces malformed tool calls, switch that exercise to the `CodeAgent`, which does not rely on
+  the provider's structured tool-calling API.
 - **Colab quotas**: free GPU access is not guaranteed. Every notebook falls back to CPU; sessions 06, 07 and 09 detect the
   GPU and shrink the workload automatically (`GPU`/`device` variables in the setup cells).
 - **Offline resilience**: session 03 checks whether PubChem/ChEMBL/PDB/Hugging Face answer, and uses the cached datasets

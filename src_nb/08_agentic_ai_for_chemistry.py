@@ -18,10 +18,14 @@
 - run a **single agent** and a small **multi-agent** system on real questions, and read its trace critically;
 - evaluate agents (does the answer match a ground truth computed by RDKit?) and discuss safety, cost and reproducibility.
 
-> 🔑 **You need a free API key.** Get one at <https://aistudio.google.com/apikey> (Google account, no credit card).
-> In Colab, click the 🔑 key icon in the left sidebar → *Add new secret* → name it `GEMINI_API_KEY`, paste the key,
-> and enable *Notebook access*. The code is written with **LiteLLM**, so a single line switches to OpenAI, Anthropic,
-> Mistral or a local model.
+> 🔑 **You need an API key.** This notebook is set up for **DeepSeek**. Create a key at
+> <https://platform.deepseek.com/api_keys>, then in Colab click the 🔑 key icon in the left sidebar →
+> *Add new secret* → name it `DEEPSEEK_API_KEY`, paste the key, and enable *Notebook access*.
+> Your instructor may give you a key instead — in that case just paste it when the notebook asks.
+>
+> DeepSeek is a **paid** API (there is no free tier), but it is inexpensive and one pass through this notebook is
+> a handful of short requests. The code goes through **LiteLLM**, so switching provider is a one-line change:
+> the commented alternatives in section 2 include Google Gemini, whose free tier needs no card.
 
 ---
 > **Credits — thank you to the original authors.** This session adapts, updates and revises material from
@@ -96,13 +100,15 @@ Two agent styles:
 """
 ## 2. Connecting to a model
 
-We use **smolagents** with **LiteLLM**, which speaks to any provider through one interface. The default below is
-Gemini's free tier; the commented lines show alternatives.
+We use **smolagents** with **LiteLLM**, which speaks to any provider through one interface: you name the model as
+`provider/model`, LiteLLM finds the matching key in the environment and translates the request. The default below
+is **DeepSeek**, whose API is OpenAI-compatible (`https://api.deepseek.com`); the commented lines show alternatives,
+and nothing else in the notebook changes when you switch.
 """
 
 # %%
 # Read the API key: Colab secrets first, then an environment variable, then ask.
-def get_api_key(name="GEMINI_API_KEY"):
+def get_api_key(name="DEEPSEEK_API_KEY"):
     try:
         from google.colab import userdata
         key = userdata.get(name)
@@ -119,15 +125,20 @@ def get_api_key(name="GEMINI_API_KEY"):
     return key
 
 API_KEY = get_api_key()
-os.environ["GEMINI_API_KEY"] = API_KEY or ""
+os.environ["DEEPSEEK_API_KEY"] = API_KEY or ""
 HAVE_KEY = bool(API_KEY)
 print("API key found:", HAVE_KEY)
 
 # %%
-MODEL_ID = "gemini/gemini-2.5-flash"     # free tier, fast, good at tool use
-# MODEL_ID = "openai/gpt-4.1-mini"       # needs OPENAI_API_KEY
-# MODEL_ID = "anthropic/claude-haiku-4-5"# needs ANTHROPIC_API_KEY
-# MODEL_ID = "mistral/mistral-small-latest"
+MODEL_ID = "deepseek/deepseek-v4-flash"    # fast and cheap - the default for this course
+# MODEL_ID = "deepseek/deepseek-v4-pro"     # stronger reasoning; try it if the agent gets stuck
+# MODEL_ID = "gemini/gemini-2.5-flash"      # needs GEMINI_API_KEY (free tier, no card)
+# MODEL_ID = "openai/gpt-4.1-mini"          # needs OPENAI_API_KEY
+# MODEL_ID = "anthropic/claude-haiku-4-5"   # needs ANTHROPIC_API_KEY
+# MODEL_ID = "mistral/mistral-small-latest" # needs MISTRAL_API_KEY
+
+# If you switch provider, also change the secret name in get_api_key() above - each provider reads its own
+# environment variable (DEEPSEEK_API_KEY, GEMINI_API_KEY, OPENAI_API_KEY, ...).
 
 from smolagents import CodeAgent, ToolCallingAgent, LiteLLMModel, tool
 
@@ -372,6 +383,13 @@ if HAVE_KEY:
 A `CodeAgent` writes Python that calls the tools. It can loop over a list of molecules, sort results, use pandas — things
 that would take many separate tool calls. The price: it *executes code*, so we restrict the allowed imports
 (`additional_authorized_imports`) and never run it on untrusted input.
+
+There is a second, practical reason to know this agent type. A `ToolCallingAgent` depends on the provider's
+**structured tool-calling** API, and support for it varies in quality between models. A `CodeAgent` needs nothing
+but a model that can write Python, so it works with essentially any chat model. If you switch to a smaller or
+self-hosted model and the tool-calling agent starts producing malformed calls, try the code agent before blaming
+your tools — or move up to `deepseek/deepseek-v4-pro`, which DeepSeek's own tool-calling documentation uses in its
+examples.
 """
 
 # %%

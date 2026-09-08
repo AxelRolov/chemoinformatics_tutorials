@@ -59,8 +59,9 @@ exercises (with hidden solutions) and further reading. Sessions 06, 07 and 09 be
 3. Work through the notebook with `Shift + Enter`. Change things, break them, fix them.
 4. To keep your work: *File → Save a copy in Drive*.
 
-Session 08 needs a free LLM API key — see the instructions at the top of that notebook
-(<https://aistudio.google.com/apikey>, no credit card).
+Session 08 needs an LLM API key — see the instructions at the top of that notebook. It is set up for
+**DeepSeek** (<https://platform.deepseek.com/api_keys>); switching to another provider, including Google Gemini's
+free tier, is a one-line change in that notebook.
 
 ## For instructors
 

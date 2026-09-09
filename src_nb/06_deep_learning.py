@@ -79,6 +79,29 @@ Training = **minimising a loss** $L(\theta)$ (e.g. mean squared error) over the 
 Let's see the whole mechanism on the smallest possible example: fitting a straight line.
 """
 
+# %% [markdown]
+"""
+**The whole of deep learning, in fourteen lines.** Read this cell slowly, because every training loop in the rest of
+the course is this one with more machinery around it.
+
+- `requires_grad=True` on `w` and `b` is the switch that matters. It tells PyTorch to record every operation these
+  two numbers take part in, building a graph it can later differentiate. Without it, `loss.backward()` has nothing
+  to work with.
+- `y_hat = w * x + b` is the **forward pass**: our current guess.
+- `loss = ((y_hat - y) ** 2).mean()` measures how wrong that guess is.
+- `loss.backward()` is **back-propagation** — the chain rule run backwards through the recorded graph. It does not
+  change anything; it *fills in* `w.grad` and `b.grad` with $\partial L/\partial w$ and $\partial L/\partial b$.
+- `w -= lr * w.grad` takes the step downhill. It sits inside `torch.no_grad()` because updating the parameters is
+  bookkeeping, not part of the function being differentiated — record it and you would be differentiating your own
+  optimiser.
+- `w.grad.zero_()` is the one that catches everyone. PyTorch **accumulates** gradients rather than replacing them, so
+  a forgotten `zero_()` means step 50 uses the sum of the first fifty gradients. In the rest of the notebook the
+  optimiser does this for us, as `opt.zero_grad()`.
+
+Starting from `w = b = 0`, a hundred steps recover `w = 2.06, b = -0.99` against the true 2 and −1. The gap is the
+noise we added, not a failure of the optimiser.
+"""
+
 # %%
 # Toy data: y = 2x - 1 + noise
 x = torch.linspace(-1, 1, 50).unsqueeze(1)
@@ -97,6 +120,17 @@ for step in range(100):
         w.grad.zero_(); b.grad.zero_()
     history.append(loss.item())
 print(f"learned w = {w.item():.2f}, b = {b.item():.2f}  (true: 2, -1)")
+# %% [markdown]
+"""
+**Two views of the same run.** On the left, the loss against step number — the shape you will be staring at for the
+rest of this session. Note that it falls steeply and then flattens: gradient descent makes fast progress while the
+error is large and fine adjustments at the end.
+
+On the right, the fitted line through the data. With one parameter pair and fifty points you can check the answer by
+eye, which is exactly why we start here. Once the model has a million parameters, the loss curve is *all* you have.
+"""
+
+# %%
 plt.figure(figsize=(8, 2.8)); plt.subplot(1, 2, 1); plt.plot(history); plt.xlabel("step"); plt.ylabel("loss")
 plt.subplot(1, 2, 2); plt.scatter(x, y, s=8); plt.plot(x, (w * x + b).detach(), "r"); plt.xlabel("x"); plt.ylabel("y"); plt.show()
 
@@ -111,6 +145,16 @@ Same problem as session 05: predict ESOL solubility from Morgan fingerprints. We
 the test set to decide when to stop training.
 """
 
+# %% [markdown]
+"""
+**The same data as session 05, deliberately.** ESOL, Morgan fingerprints, a 20 % test set with `random_state=42` —
+identical to session 05 — so that every number in this notebook can be compared with the random forest directly.
+Reusing a benchmark rather than inventing a new one is how you find out whether a fancier model is actually better.
+
+One change from session 05: `dtype=np.float32`. Neural networks work in single precision (it is what GPUs are fast
+at), and passing a `float64` array is a common source of dtype errors later.
+"""
+
 # %%
 esol = pd.read_csv(data_path("esol_delaney.csv")).rename(columns={"measured log solubility in mols per litre": "logS"})
 esol["mol"] = esol["smiles"].apply(Chem.MolFromSmiles)
@@ -118,13 +162,57 @@ fpgen = rdFingerprintGenerator.GetMorganGenerator(radius=2, fpSize=2048)
 X_fp = np.array([fpgen.GetFingerprintAsNumPy(m) for m in esol["mol"]], dtype=np.float32)
 y = esol["logS"].values.astype(np.float32)
 
+# %% [markdown]
+"""
+**Three sets, not two.** Session 05 needed only train and test. A neural network also needs a **validation** set,
+because we have to decide *when to stop training*, and that decision is a form of model selection — make it on the
+test set and your test estimate is no longer honest.
+
+So the split happens twice: 20 % test, then 15 % of the remainder as validation, leaving 766 / 136 / 226. The
+`idx_trainval` array is kept because the random forest we compare against does not need a validation set, and giving
+it all 902 molecules keeps the comparison fair.
+"""
+
+# %%
 idx_trainval, idx_test = train_test_split(np.arange(len(esol)), test_size=0.2, random_state=42)
 idx_train, idx_val = train_test_split(idx_trainval, test_size=0.15, random_state=42)
 print(len(idx_train), "train /", len(idx_val), "validation /", len(idx_test), "test")
 
+# %% [markdown]
+"""
+**Standardising the target.** logS runs from about −11 to +2, so the squared error of a badly-predicted insoluble
+molecule is enormous, and the first gradient steps are dominated by scale rather than by structure. Subtracting the
+mean and dividing by the standard deviation puts the target on a roughly unit scale, which lets one learning rate
+work for every molecule.
+
+`y_mean` and `y_std` come from the **training molecules only** — computing them on all the data would leak the test
+set's distribution into training. They are kept in variables because every prediction has to be multiplied back out
+before it can be compared with a measured solubility, which is what `predict_mlp` does a few cells below.
+"""
+
+# %%
 # Standardise the target (helps optimisation); we un-standardise predictions later
 y_mean, y_std = y[idx_train].mean(), y[idx_train].std()
 y_norm = (y - y_mean) / y_std
+
+# %% [markdown]
+"""
+**Defining a network in PyTorch.** Two conventions to learn here, because every model you write will use them.
+
+First, a model is a class inheriting from `nn.Module`, with `super().__init__()` called first — that is what
+registers the parameters so the optimiser can find them. Second, `forward` defines the computation, and you never
+call it directly: `model(x)` invokes it through `__call__`, which also runs any registered forward hooks — one of
+several reasons never to call `model.forward(x)` yourself. (Train/eval mode is separate: `model.train()` and
+`model.eval()` just set a `self.training` flag that layers like `Dropout` read inside their own `forward`.)
+
+The architecture itself is the plain default: `Linear → ReLU → Dropout`, twice, then a linear output. `hidden=(512,
+128)` is a funnel, compressing 2048 sparse bits to 512 then 128 features. `Dropout(0.3)` zeroes 30 % of the
+activations at random *during training only* — it is the reason we must remember `model.eval()` before predicting.
+`squeeze(-1)` turns the `(batch, 1)` output into `(batch,)` so it matches the shape of the targets.
+
+The parameter count printed at the end is the number worth remembering: **1.1 million parameters, trained on 766
+molecules**. Fifteen hundred parameters per molecule. Everything about the next two cells follows from that ratio.
+"""
 
 # %%
 class MLP(nn.Module):
@@ -143,6 +231,23 @@ class MLP(nn.Module):
 model = MLP(2048)
 print(model)
 print("trainable parameters:", sum(p.numel() for p in model.parameters()))
+
+# %% [markdown]
+"""
+**The training loop, with three things the toy example did not have.**
+
+- **Mini-batches.** `torch.randperm` reshuffles the training set each epoch and we step over it in slices of 64.
+  Batching is partly about memory and speed, but the noise it injects into each gradient also helps generalisation.
+- **Adam** instead of hand-written gradient descent, with `weight_decay=1e-4` — an L2 penalty on the weights, the
+  same regularisation idea as Ridge in session 05.
+- **Early stopping, done properly.** After each epoch the model is switched to `eval()` mode, both losses are
+  computed under `torch.no_grad()`, and whenever the validation loss improves we take a full **copy** of the weights
+  (`{k: v.clone() ...}` — without `.clone()` you would store references that keep changing). At the end we
+  `load_state_dict(best_state)`, so the model returned is the best one seen, not the last one trained.
+
+That `train()` / `eval()` pair is not optional. In `train()` mode dropout is active and the network is deliberately
+handicapped; forget to switch and your validation loss is measured on a crippled model.
+"""
 
 # %%
 def to_tensor(a): return torch.tensor(a, dtype=torch.float32, device=device)
@@ -171,9 +276,29 @@ def train_mlp(model, X, y, idx_train, idx_val, epochs=150, lr=1e-3, batch_size=6
     model.load_state_dict(best_state)
     return model, np.array(curve)
 
+# %% [markdown]
+"""
+**Run it — and read the printed numbers, not the final RMSE.** 150 epochs, about four minutes on a CPU and seconds on
+a GPU.
+
+The training loss falls to **0.018** while the validation loss stalls around **0.24** — more than ten times higher.
+That gap *is* overfitting, in numbers: the network has essentially memorised 766 molecules. And notice when it
+happened: by epoch 25 the validation loss is already 0.268, so almost nothing after epoch 25 helped. Early stopping
+kept the model honest; the remaining 125 epochs were spent memorising.
+"""
+
+# %%
 t0 = time.time()
 mlp, curve = train_mlp(MLP(2048), X_fp, y_norm, idx_train, idx_val)
 print(f"{time.time() - t0:.0f} s")
+
+# %% [markdown]
+"""
+**Predicting means undoing the standardisation.** `model.eval()` turns dropout off, `torch.no_grad()` skips building
+the gradient graph (faster and less memory), `.cpu().numpy()` brings the tensor back to numpy — and then
+`* y_std + y_mean` converts the standardised output back into log solubility units. Miss that last step and your
+RMSE will look suspiciously excellent, because it will be measured in standard deviations.
+"""
 
 # %%
 def predict_mlp(model, X):
@@ -181,9 +306,33 @@ def predict_mlp(model, X):
     with torch.no_grad():
         return model(to_tensor(X)).cpu().numpy() * y_std + y_mean
 
+# %% [markdown]
+"""
+**The picture of overfitting.** The two curves separate early and never come back together: training loss keeps
+falling, validation loss flattens. This shape is the single most useful diagnostic in deep learning, and it tells you
+what to do next — the fix for a large gap is *more regularisation or more data*, never more epochs. (Exercise 2.1
+asks you to remove the regularisation and watch the validation curve turn upwards.)
+"""
+
+# %%
 plt.figure(figsize=(5, 3)); plt.plot(curve[:, 0], label="train"); plt.plot(curve[:, 1], label="validation")
 plt.xlabel("epoch"); plt.ylabel("MSE (standardised)"); plt.legend(); plt.title("Learning curves"); plt.show()
 
+# %% [markdown]
+"""
+**The comparison that justifies the session — or doesn't.** MLP: test RMSE **1.087**, R² 0.750. Random forest on the
+same fingerprints: **1.175**, R² 0.708.
+
+So a 1.1-million-parameter network, four minutes of training and three regularisation techniques buy about 0.09 log
+units over a random forest that fits in ten seconds and has no hyperparameters worth tuning. On 900 molecules, that
+is what deep learning on a fixed, hand-designed representation gets you.
+
+Worth holding both numbers in mind: session 05 reached RMSE 0.674 on this dataset — with descriptors instead of
+fingerprints. Neither model here is close to that. The bottleneck is not the model; it is the representation. Which
+is precisely what section 3 attacks.
+"""
+
+# %%
 p_mlp = predict_mlp(mlp, X_fp[idx_test])
 print(f"MLP on ECFP4:  test RMSE = {rmse(y[idx_test], p_mlp):.3f}   R² = {r2_score(y[idx_test], p_mlp):.3f}")
 rf = RandomForestRegressor(n_estimators=300, n_jobs=-1, random_state=0).fit(X_fp[idx_trainval], y[idx_trainval])
@@ -253,6 +402,13 @@ except that $\phi$ and $\psi$ are learned. A **readout** (sum/mean over atoms) t
 This is *message passing* (Gilmer *et al.* 2017); GCN, GIN, GAT, MPNN, D-MPNN (Chemprop) are all variants of $\phi$ and $\psi$.
 """
 
+# %% [markdown]
+"""
+**Turning a molecule into a graph, in three pieces.** The imports first: `Data` is PyG's container for one graph,
+`DataLoader` batches graphs, and `GCNConv` / `GINConv` are message-passing layers while `global_mean_pool` /
+`global_add_pool` are readouts. `ELEMENTS` and `HYBRID` are the vocabularies for the one-hot encodings that follow.
+"""
+
 # %%
 from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader
@@ -261,6 +417,21 @@ from torch_geometric.nn import GCNConv, GINConv, global_mean_pool, global_add_po
 ELEMENTS = ["C", "N", "O", "S", "F", "Cl", "Br", "I", "P"]
 HYBRID = [Chem.HybridizationType.SP, Chem.HybridizationType.SP2, Chem.HybridizationType.SP3]
 
+# %% [markdown]
+"""
+**Choosing the atom features.** Every atom becomes a 25-dimensional vector, and this function is where a chemist's
+judgement enters a graph neural network — it is the analogue of choosing descriptors in session 05.
+
+Note that almost everything is **one-hot** rather than numeric: `[int(atom.GetDegree() == d) for d in range(5)]`
+gives five binary columns instead of one column holding 0–4. That is deliberate. A single numeric column asserts that
+degree 4 is "twice as much" as degree 2 and that the relationship is linear; one-hot columns let the network learn a
+separate weight for each case, which is what you want for a categorical quantity. The `int(symbol not in ELEMENTS)`
+column is the catch-all "other element" bucket — without it, a boron atom would silently become an all-zero vector.
+
+Formal charge is the one exception, left numeric, because −1 / 0 / +1 really is ordered.
+"""
+
+# %%
 def atom_features(atom):
     f = [int(atom.GetSymbol() == e) for e in ELEMENTS] + [int(atom.GetSymbol() not in ELEMENTS)]
     f += [int(atom.GetDegree() == d) for d in range(5)]
@@ -269,6 +440,24 @@ def atom_features(atom):
     f += [int(atom.GetIsAromatic()), int(atom.IsInRing()), atom.GetFormalCharge()]
     return f
 
+# %% [markdown]
+"""
+**Building the `Data` object.** Three fields matter.
+
+`x` is the atom-feature matrix, one row per atom. `edge_index` is a `(2, n_edges)` tensor listing bonds as pairs of
+atom indices — and the crucial line is `edges + [(j, i) for i, j in edges]`: PyG expects **directed** edges, so every
+bond has to be listed in both directions or messages will only ever flow one way along it. Forgetting that is the
+most common beginner bug in PyG, and it does not raise an error, it just trains a worse model. `.t().contiguous()`
+puts it in the shape and memory layout PyG wants.
+
+The `if edges` guard handles single atoms, which have no bonds; and `y` goes in as a one-element tensor because the
+target belongs to the whole graph, not to any atom.
+
+Printing the first molecule shows `Data(x=[32, 25], edge_index=[2, 68], y=[1])`: 32 atoms, 25 features each, and 68
+directed edges — so 34 bonds. Check that the numbers are twice what you expect; if not, you forgot the reverse edges.
+"""
+
+# %%
 def mol_to_graph(mol, y=None):
     x = torch.tensor([atom_features(a) for a in mol.GetAtoms()], dtype=torch.float)
     edges = [(b.GetBeginAtomIdx(), b.GetEndAtomIdx()) for b in mol.GetBonds()]
@@ -278,8 +467,29 @@ def mol_to_graph(mol, y=None):
         data.y = torch.tensor([y], dtype=torch.float)
     return data
 
+# %% [markdown]
+"""
+**Convert one molecule and look at it.** Always inspect a single example before building 1128 of them. `Data` prints
+the shape of every field it holds, which is enough to catch a transposed `edge_index` or a missing target.
+"""
+
+# %%
 g = mol_to_graph(esol["mol"][0], y_norm[0])
 print(g, "\nnode feature length:", g.x.shape[1])
+
+# %% [markdown]
+"""
+**Batching graphs is stranger than batching vectors.** Molecules have different numbers of atoms, so they cannot be
+stacked into a rectangular tensor. PyG's solution is to **concatenate** the graphs of a batch into one big
+disconnected graph and add a `batch` vector saying which molecule each atom belongs to.
+
+The printout makes it concrete: `DataBatch(x=[416, 25], edge_index=[2, 844], y=[32], batch=[416], ptr=[33])` — 32
+molecules averaging 13 atoms, so 416 atom rows, one target per molecule, and a 416-long `batch` vector. That vector
+is what `global_mean_pool` uses to average each molecule's atoms separately at readout time. Message passing needs no
+knowledge of the batch at all, because there are no edges between molecules.
+
+Only the training loader shuffles; validation and test use larger batches since no gradients are stored.
+"""
 
 # %%
 graphs = [mol_to_graph(m, t) for m, t in zip(esol["mol"], y_norm)]
@@ -288,6 +498,25 @@ val_loader = DataLoader([graphs[i] for i in idx_val], batch_size=128)
 test_loader = DataLoader([graphs[i] for i in idx_test], batch_size=128)
 batch = next(iter(train_loader))
 print(batch)                     # PyG concatenates the graphs of a batch into one big disconnected graph
+
+# %% [markdown]
+"""
+**The network: three rounds of message passing, then a readout.** Compare it with the MLP and notice how little
+there is.
+
+`self.convs` is a list of `GCNConv` layers — the first maps 25 input features to 128, the rest 128 to 128. Each call
+`conv(h, data.edge_index)` is one round in which every atom collects a normalised sum of its neighbours' vectors and
+transforms it. After three rounds each atom's vector encodes its environment up to three bonds away, which is exactly
+the information a Morgan fingerprint of radius 3 records — except that here *what* is recorded is learned from the
+solubility data rather than fixed in advance.
+
+`BatchNorm1d` between rounds keeps activations from drifting as they are repeatedly mixed; deep GNNs are hard to
+train without it.
+
+`embed()` ends with `global_mean_pool(h, data.batch)`, the **readout**: average all of a molecule's atom vectors into
+one 128-dimensional molecular vector. It is written as a separate method on purpose — that vector is a learned
+molecular representation, and section 3's last cell looks at it. `forward()` is then just `head(embed(...))`.
+"""
 
 # %%
 class GCN(nn.Module):
@@ -308,6 +537,20 @@ class GCN(nn.Module):
     def forward(self, data):
         return self.head(self.embed(data)).squeeze(-1)
 
+# %% [markdown]
+"""
+**The GNN training loop.** Structurally identical to `train_mlp` — same Adam, same best-on-validation checkpoint —
+with two differences.
+
+The batching is now handled by the `DataLoader`, so we iterate `for data in train_loader` and move each batch to the
+device with `data.to(device)`; `data.num_graphs` is how many molecules it holds.
+
+And there is a **learning-rate scheduler**: `ReduceLROnPlateau(factor=0.5, patience=10)` halves the learning rate
+whenever the validation loss has not improved for ten epochs. This is standard practice and it is why the loss curve
+below has a visible knee — big steps to find the right region, small steps to settle into it.
+"""
+
+# %%
 def train_gnn(model, train_loader, val_loader, epochs=120, lr=1e-3, verbose=True):
     model = model.to(device)
     opt = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
@@ -329,6 +572,19 @@ def train_gnn(model, train_loader, val_loader, epochs=120, lr=1e-3, verbose=True
     model.load_state_dict(best_state)
     return model, np.array(curve)
 
+# %% [markdown]
+"""
+**Two evaluation helpers.** Both are decorated with `@torch.no_grad()`, which switches off gradient tracking for the
+whole function — the decorator form is tidier than wrapping the body, and forgetting it is a common cause of
+mysterious memory growth during evaluation.
+
+`evaluate_gnn` uses `reduction="sum"` and divides by the dataset size at the end, rather than averaging per batch.
+That matters whenever the last batch is smaller than the others: averaging averages would silently over-weight it.
+`predict_gnn` concatenates the per-batch predictions and undoes the target standardisation, exactly as `predict_mlp`
+did.
+"""
+
+# %%
 @torch.no_grad()
 def evaluate_gnn(model, loader):
     model.eval(); tot = 0
@@ -342,11 +598,41 @@ def predict_gnn(model, loader):
     model.eval()
     return np.concatenate([model(d.to(device)).cpu().numpy() for d in loader]) * y_std + y_mean
 
+# %% [markdown]
+"""
+**Run it, and compare three numbers.** About eight minutes on a CPU, well under one on a GPU.
+
+Test RMSE **0.690**, R² 0.899 — against 1.087 for the MLP and 1.175 for the random forest on the same molecules and
+the same split. That is a *large* improvement, and it is not because the GCN is a bigger model: it has fewer
+parameters than the MLP. It is because it built its own features from the graph instead of being handed 2048
+pre-decided bits.
+
+Look at the training trace too: the final gap is train 0.063 against validation 0.099, where the MLP's was 0.018
+against 0.239. The GCN both fits better *and* generalises better, because message passing has the structure of the
+problem built into it and cannot memorise a molecule as an arbitrary pattern of bits.
+
+For calibration: session 05's best classical model, XGBoost on 199 curated descriptors, reached 0.674. The GCN
+matched it — starting from nothing but atoms and bonds. Two decades of descriptor design, rediscovered from data in
+eight minutes. That is the honest case for deep learning in chemistry, and note carefully what it is *not*: it is not
+"beats the classical model", it is "reaches the same place without needing the chemistry to be pre-encoded".
+"""
+
+# %%
 t0 = time.time()
 gcn, curve_g = train_gnn(GCN(graphs[0].x.shape[1]), train_loader, val_loader)
 print(f"{time.time() - t0:.0f} s")
 p_gcn = predict_gnn(gcn, test_loader)
 print(f"GCN:  test RMSE = {rmse(y[idx_test], p_gcn):.3f}   R² = {r2_score(y[idx_test], p_gcn):.3f}")
+
+# %% [markdown]
+"""
+**The three-panel summary.** The GCN's learning curves on the left — much closer together than the MLP's — and then
+the two parity plots side by side on the same axes.
+
+Look at the low-solubility tail again. The MLP's cloud fans out below logS = −6 while the GCN's stays close to the
+diagonal, so the improvement is not spread evenly: it is concentrated exactly in the region where a fingerprint has
+nothing to say, because "very insoluble" is about the whole molecule.
+"""
 
 # %%
 fig, axes = plt.subplots(1, 3, figsize=(13, 3.6))
@@ -359,8 +645,20 @@ plt.tight_layout(); plt.show()
 # %% [markdown]
 """
 ### What did the GNN learn? The embedding space
+
 The vector produced by `embed()` is a **learned molecular representation**. Let's project it to 2D (PCA) and colour by logS:
 molecules with similar solubility should end up close together — the network has organised chemical space around the task.
+
+The cell runs every molecule through `gcn.embed(...)` — no gradients, batches of 256 — to get a 1128 × 128 matrix,
+then keeps the two directions of largest variance with `PCA(n_components=2)`. The axes are unlabelled and left
+without ticks on purpose: principal components of a learned embedding have no units and no meaning individually, and
+only the *arrangement* is interpretable.
+
+What to look for is a smooth colour gradient. Compare it mentally with the PCA of fingerprints or descriptors in
+session 04, which was organised by structural family instead: this embedding is organised by **the property we
+trained on**, because that is the only thing the loss ever asked about. Train the same architecture on toxicity and
+the same molecules would rearrange. A learned representation is task-specific, which is its strength and its
+limitation — and it is why the transfer-learning approach in section 4 is interesting.
 """
 
 # %%
@@ -438,7 +736,23 @@ Fingerprints are designed, GNN features are learned *for one task*. A third opti
 transformer pre-trained on millions of SMILES (masked-token prediction, like BERT) provides an *embedding* for any molecule,
 which we then feed to a simple model. This is the "foundation model" idea applied to chemistry.
 
-We use **ChemBERTa-2** (Ahmad *et al.* 2022; 77 M parameters, pre-trained on 77 M PubChem SMILES) from the Hugging Face Hub.
+We use **ChemBERTa-2** (Ahmad *et al.* 2022) from the Hugging Face Hub, in its `77M-MTR` variant. Read that name
+carefully, because it is easy to misread: the 77 M counts the **pre-training molecules**, not the parameters. This is
+a small model — just a few transformer layers with 384 hidden dimensions, a few million weights; the cell below
+prints the exact count.
+What it brings is not size but exposure to 77 million SMILES.
+"""
+
+# %% [markdown]
+"""
+**Downloading somebody else's pre-trained transformer.** `AutoTokenizer` and `AutoModel` fetch the tokenizer and the
+weights from the Hugging Face Hub by name and cache them locally; `.eval()` puts the transformer in inference
+mode, since we are going to use it frozen, as a feature extractor.
+
+The whole thing sits in a `try/except` that sets `HF_OK`, because this is the one cell in the course that *must*
+reach the internet — huggingface.co is blocked on some university and corporate networks (it was blocked in the
+sandbox these notebooks were built in, so the printed message is the one you will see there). If it fails, the rest
+of the section is skipped and nothing else in the notebook breaks. On Colab it works.
 """
 
 # %%
@@ -454,6 +768,25 @@ except Exception as e:
     print("Could not load the model:", str(e)[:150])
     print("\nThis needs internet access to huggingface.co. It works on Google Colab;"
           "\nif you are running elsewhere behind a firewall, skip this section.")
+
+# %% [markdown]
+"""
+**Using a language model as a featuriser.** This cell does three things, and the middle one is the interesting one.
+
+`embed_smiles` runs SMILES through the transformer in batches. `tok(..., padding=True, truncation=True)` produces
+token ids plus an `attention_mask` marking real tokens against padding, and `last_hidden_state` is one 384-dimensional
+vector **per token**. To get one vector per molecule we average over the tokens — but only over the real ones, which
+is what `(h * mask).sum(1) / mask.sum(1)` computes. Averaging over the padding too would make a molecule's embedding
+depend on how long its batch-mates happened to be.
+
+Then `tok.tokenize("CC(=O)Oc1ccccc1C(=O)O")` prints the tokenisation, worth comparing with the hand-written regex
+tokenizer of session 07 — this one was learned from data (byte-pair encoding) and merges frequent character
+sequences into single tokens.
+
+Finally the embeddings go into a **Ridge regression and a random forest**, and that is the entire point of transfer
+learning: the expensive part was pre-training on 77 million molecules, which somebody else already paid for. We add
+a linear model on top and get a competitive predictor from a dataset far too small to train a transformer on.
+"""
 
 # %%
 if HF_OK:

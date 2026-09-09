@@ -106,6 +106,17 @@ is **DeepSeek**, whose API is OpenAI-compatible (`https://api.deepseek.com`); th
 and nothing else in the notebook changes when you switch.
 """
 
+# %% [markdown]
+"""
+**Finding your key, three ways.** `get_api_key` tries Colab Secrets first (the 🔑 icon in the left sidebar). That is
+the right place for it: the key lives in your Google account, not in the notebook, so it is not saved into the file
+and not shared when you share the notebook. If that fails it falls back to an environment variable, for running
+locally, and finally to `getpass`, which hides what you type and keeps the key only in memory for this session.
+
+Whatever happens, `HAVE_KEY` records whether we got one, and every agent cell below is wrapped in `if HAVE_KEY:`.
+So the notebook runs top to bottom without a key — you see the tools working and the agent sections quietly skipped.
+"""
+
 # %%
 # Read the API key: Colab secrets first, then an environment variable, then ask.
 def get_api_key(name="DEEPSEEK_API_KEY"):
@@ -129,6 +140,15 @@ os.environ["DEEPSEEK_API_KEY"] = API_KEY or ""
 HAVE_KEY = bool(API_KEY)
 print("API key found:", HAVE_KEY)
 
+# %% [markdown]
+"""
+**Choosing the model.** LiteLLM names models as `provider/model` and works out which environment variable holds the
+key. `deepseek-v4-flash` is the cheap, fast one and the default for this course; `deepseek-v4-pro` reasons better and
+is worth trying if the agent gets stuck in a loop. Uncomment one of the other lines to change provider — but change
+the secret name in `get_api_key()` above as well, because each provider reads its own variable. DeepSeek is paid with
+no free tier; Gemini's free tier needs no card, if you would rather not put one in.
+"""
+
 # %%
 MODEL_ID = "deepseek/deepseek-v4-flash"    # fast and cheap - the default for this course
 # MODEL_ID = "deepseek/deepseek-v4-pro"     # stronger reasoning; try it if the agent gets stuck
@@ -140,10 +160,33 @@ MODEL_ID = "deepseek/deepseek-v4-flash"    # fast and cheap - the default for th
 # If you switch provider, also change the secret name in get_api_key() above - each provider reads its own
 # environment variable (DEEPSEEK_API_KEY, GEMINI_API_KEY, OPENAI_API_KEY, ...).
 
+# %% [markdown]
+"""
+**Four imports, and what each is for.** `LiteLLMModel` wraps the provider behind one interface; `tool` is the
+decorator that turns an ordinary Python function into something an LLM can call; `ToolCallingAgent` and `CodeAgent`
+are the two agent styles described at the end of section 1.
+
+`temperature=0.2` is deliberate. For creative writing you want a high temperature; for an agent you want the most
+likely next action almost every time, because an agent that improvises is an agent that loops. The
+`... if HAVE_KEY else None` is what lets the rest of the notebook be read without a key.
+"""
+
+# %%
 from smolagents import CodeAgent, ToolCallingAgent, LiteLLMModel, tool
 
 model = LiteLLMModel(model_id=MODEL_ID, api_key=API_KEY, temperature=0.2) if HAVE_KEY else None
 
+# %% [markdown]
+"""
+**A smoke test before anything complicated.** One plain chat request: no tools, no agent loop. If this prints a
+sentence, then your key, your network access and your model name are all correct. If it raises, fix it *here*, where
+there is only one thing that can be wrong — debugging a key problem through an agent's stack trace is miserable.
+
+The nested message format (`content` as a list of typed parts) is the multimodal convention; a plain string also
+works for text-only models.
+"""
+
+# %%
 if HAVE_KEY:
     from smolagents.models import ChatMessage, MessageRole
     reply = model([{"role": "user", "content": [{"type": "text", "text": "In one sentence: what is a SMILES string?"}]}])
@@ -154,6 +197,19 @@ if HAVE_KEY:
 ### The hallucination problem, demonstrated
 
 Let's ask the raw model for a molecular weight and a SMILES, and check both with RDKit.
+"""
+
+# %% [markdown]
+"""
+**The demonstration that motivates the whole notebook.** Two questions the model will answer with complete
+confidence: give me a structure, give me a molecular weight. Then we check both with RDKit instead of by eye.
+
+Read the checks carefully, because there is a subtlety. `Chem.MolFromSmiles` returning a molecule proves only that
+the string is *parsable* — not that it is remdesivir. So we also print the molecular formula and compare it with
+PubChem's reference (C27H35N6O8P, 602.6 g/mol). A hallucinated SMILES is usually perfectly valid chemistry; it is
+just a different compound.
+
+Run this cell two or three times. The failure is not reproducible, which is the worst property an error can have.
 """
 
 # %%
@@ -185,6 +241,22 @@ A tool in smolagents is a plain Python function with the `@tool` decorator, type
 what the LLM reads to decide when and how to use it, so write it as if for a colleague.
 """
 
+# %% [markdown]
+"""
+**Tool 1 · look up a structure.** The `@tool` decorator reads the function's signature, type hints and docstring and
+turns them into the JSON schema the model sees. So the docstring is not documentation — **it is prompt**, and the
+`Args:` section is required: without it smolagents refuses to build the tool. Write it as you would write an
+instruction to a new colleague, including when *not* to use the tool ("instead of recalling SMILES from memory").
+
+Two details in the body are worth copying into your own tools:
+
+- The loop over `("SMILES", "IsomericSMILES", "CanonicalSMILES")` exists because PubChem's REST API renamed this
+  property, and different endpoints answer to different names. Then the result is canonicalised through RDKit, so
+  the agent always sees the same spelling for the same molecule.
+- On failure the function **returns** a string starting with `ERROR:` instead of raising. An exception would kill
+  the agent's loop; an error *message* is something the model can read, and react to, and report honestly.
+"""
+
 # %%
 @tool
 def get_smiles(name: str) -> str:
@@ -208,6 +280,20 @@ def get_smiles(name: str) -> str:
     return f"ERROR: could not find '{name}' in PubChem"
 
 
+# %% [markdown]
+"""
+**Tool 2 · compute properties.** One call returns everything the model needs for a Lipinski discussion, which saves
+a round trip per property. Three choices to notice:
+
+- It returns `json.dumps(...)`, a string — tool outputs are always text, and JSON is the format models parse most
+  reliably.
+- Everything is **rounded**. Hand a model twelve decimal places and it will faithfully copy them into an answer that
+  claims a precision the method does not have.
+- `lipinski_violations` is counted *here*, in Python, rather than left to the model. Counting is exactly what LLMs
+  are worst at, so anything countable belongs on this side of the boundary.
+"""
+
+# %%
 @tool
 def get_descriptors(smiles: str) -> str:
     """Compute the standard molecular descriptors of a molecule with RDKit: molecular formula, molecular weight, logP,
@@ -229,6 +315,17 @@ def get_descriptors(smiles: str) -> str:
     return json.dumps(d)
 
 
+# %% [markdown]
+"""
+**Tool 3 · compare two molecules.** The code is three lines from session 02. The interesting part is the last
+sentence of the docstring: *"above 0.7 means very similar, below 0.3 means structurally different"*.
+
+The model has no idea what a Tanimoto of 0.45 means. Putting the interpretation in the docstring is what turns a
+reported number into an answer a student can use — and it is the cheapest way to inject domain knowledge into an
+agent. When an agent misinterprets your tool's output, the fix is almost always in the docstring, not in the code.
+"""
+
+# %%
 @tool
 def tanimoto_similarity(smiles_1: str, smiles_2: str) -> str:
     """Compute the Tanimoto similarity between two molecules using Morgan (ECFP4) fingerprints. Returns a value in [0, 1];
@@ -245,6 +342,17 @@ def tanimoto_similarity(smiles_1: str, smiles_2: str) -> str:
     return f"{DataStructs.TanimotoSimilarity(gen.GetFingerprint(m1), gen.GetFingerprint(m2)):.3f}"
 
 
+# %% [markdown]
+"""
+**Tool 4 · substructure search.** SMARTS from session 01, wrapped so the model can ask structural questions. It
+returns both the number of matches and the first ten atom-index tuples, so the answer can say *where* the match is —
+capped at ten, because a tool that dumps a thousand tuples floods the context window and costs money.
+
+Note that the docstring carries two example patterns. Examples in a docstring act as few-shot prompts, and they
+measurably improve how well a small model uses a tool with a fiddly argument like SMARTS.
+"""
+
+# %%
 @tool
 def substructure_search(smiles: str, smarts: str) -> str:
     """Check whether a molecule contains a substructure given as a SMARTS pattern, and return the number of matches.
@@ -260,6 +368,22 @@ def substructure_search(smiles: str, smarts: str) -> str:
     return json.dumps({"matches": len(matches), "atom_indices": [list(m) for m in matches[:10]]})
 
 
+# %% [markdown]
+"""
+**Test every tool without the agent first.** This is not optional ceremony. If a tool is broken you must find out
+now, because through an agent you cannot tell a broken tool from a confused model, and you will spend an hour
+rewriting prompts to fix a bug in `requests`.
+
+Expect aspirin's formula `C9H8O4` and MW 180.16, a Tanimoto of 0.448 against salicylic acid — two molecules a chemist
+would call close relatives, scoring under 0.5, which is worth remembering when you read similarity numbers — and one
+carboxylic-acid match.
+
+One line may disappoint you: `get_smiles("aspirin")` prints its `ERROR:` string whenever PubChem is unreachable
+(it is blocked in some networks, including the sandbox these notebooks were built in). That is a useful accident:
+it shows you the exact failure the agent will have to cope with. On Colab it returns the SMILES.
+"""
+
+# %%
 # Quick check that the tools work on their own
 print(get_smiles("aspirin"))
 print(get_descriptors("CC(=O)Oc1ccccc1C(=O)O"))
@@ -272,6 +396,17 @@ print(substructure_search("CC(=O)Oc1ccccc1C(=O)O", "[CX3](=O)[OX2H1]"))
 
 Sessions 04–05 produced a curated EGFR dataset and a QSAR model. Wrapping it as a tool lets the agent use in-house
 knowledge that no LLM has seen — this is where agents become useful in a real lab.
+"""
+
+# %% [markdown]
+"""
+**Training the in-house model.** This is all of session 05 in seven lines: load the curated EGFR set, fingerprint it,
+fit a random forest on **all** 5511 compounds. No test split here on purpose — the model was already validated in
+session 05; what we want now is the best available predictor. `_train_fps` is kept because the tool has to report how
+far a query is from the training data.
+
+The leading underscores are a convention marking these as the tool's internals rather than variables the notebook's
+reader is meant to use.
 """
 
 # %%
@@ -287,6 +422,19 @@ _train_fps = [_gen.GetFingerprint(m) for m in _mols]
 print("QSAR model trained on", len(_egfr), "EGFR compounds")
 
 
+# %% [markdown]
+"""
+**Tool 5 · the in-house QSAR model.** This is the tool no LLM can replace, and the reason agents earn their place in
+a real lab: it was trained on *your* data, which the model has never seen and could not have memorised.
+
+Look at what it returns — two numbers and a flag, not one number. The probability comes with the
+`nearest_training_similarity` and a boolean `reliable`. That is the applicability domain of session 05 pushed inside
+the tool's own output, so that the agent physically cannot receive a probability without also receiving the caveat.
+The alternative — hoping the model remembers to ask about the domain — does not work. Design your tools so the
+warning travels with the number.
+"""
+
+# %%
 @tool
 def predict_egfr_activity(smiles: str) -> str:
     """Predict whether a molecule is likely to inhibit the EGFR kinase, using an in-house random-forest QSAR model trained on
@@ -306,6 +454,16 @@ def predict_egfr_activity(smiles: str) -> str:
                        "reliable": bool(nn >= 0.4)})
 
 
+# %% [markdown]
+"""
+**Tool 6 · show the neighbours.** A probability is an opinion; the five nearest known inhibitors with their measured
+pIC50 values are evidence, and a chemist can judge evidence.
+
+`top_k` is clamped with `max(1, min(int(top_k), 20))`. The model will eventually ask for 100, or for "five" as a
+string, and defending a tool against its caller is ordinary practice rather than paranoia.
+"""
+
+# %%
 @tool
 def find_similar_actives(smiles: str, top_k: int = 5) -> str:
     """Find the most similar known EGFR inhibitors to a query molecule in the in-house ChEMBL dataset, with their measured pIC50.
@@ -323,6 +481,15 @@ def find_similar_actives(smiles: str, top_k: int = 5) -> str:
                         "pIC50": round(float(_egfr["pIC50"].iloc[i]), 2), "similarity": round(float(sims[i]), 3)}
                        for i in idx])
 
+# %% [markdown]
+"""
+**Two sanity checks, with a lesson in each.** Gefitinib comes back at probability 0.357 with a nearest-training
+similarity of exactly **1.0** — it *is* in the training set, and the model still puts it below 0.5. Aspirin comes
+back at 0.031 with similarity 0.36, so `reliable` is false: the low probability is almost certainly right, but the
+model had no business being asked, and the tool says so.
+"""
+
+# %%
 print(predict_egfr_activity("COc1cc2ncnc(Nc3ccc(F)c(Cl)c3)c2cc1OCCCN1CCOCC1"))   # gefitinib
 print(predict_egfr_activity("CC(=O)Oc1ccccc1C(=O)O")[:120])                       # aspirin
 
@@ -334,14 +501,23 @@ print(predict_egfr_activity("CC(=O)Oc1ccccc1C(=O)O")[:120])                     
 > knows what the tool was trained on. Keep this in mind when reading the agent's answers below.
 """
 
-# %%
-
 # %% [markdown]
 """
 ## 4. A first agent
 
 `ToolCallingAgent` asks the model to emit structured tool calls. Watch the trace: each step shows what the model decided
 and what it observed. This transparency is the point — you can audit every number in the final answer.
+"""
+
+# %% [markdown]
+"""
+**The toolbox and the house rules.** Six tools, and a system prompt written almost entirely as *prohibitions*. That
+is deliberate: "never write a SMILES string from memory" is a rule you can check and the model can follow, whereas
+"be accurate" is a wish.
+
+Read the five rules and notice that each one names a failure we have already produced in this notebook: the
+hallucinated remdesivir, the estimated molecular weight, the PubChem outage, the gefitinib probability. Instructions
+earn their place by fixing an observed failure — do not write them from imagination.
 """
 
 # %%
@@ -355,10 +531,34 @@ Rules:
 - When you use predict_egfr_activity, always report the nearest_training_similarity and warn the user if reliable is false.
 - Give short, precise answers, and state which tools produced which numbers."""
 
+# %% [markdown]
+"""
+**The first agent run.** `max_steps=8` caps the loop; without a cap, a confused agent calls tools until your credit
+runs out.
+
+The question needs three things: a structure, its properties, and a rule applied to them. So watch the **trace**, not
+the answer: you should see `get_smiles("caffeine")` and then `get_descriptors(...)` on the string that came back.
+Reading traces is the real skill of this section. An answer that is right by a wrong route — a property recalled from
+memory that happens to be correct — will fail on the next question, and only the trace tells you which you have.
+"""
+
+# %%
 if HAVE_KEY:
     agent = ToolCallingAgent(tools=TOOLS, model=model, instructions=CHEM_INSTRUCTIONS, max_steps=8)
     result = agent.run("What is the molecular weight and logP of caffeine, and does it satisfy Lipinski's rule of five?")
     print("\nFINAL ANSWER:\n", result)
+
+# %% [markdown]
+"""
+**A question that needs the same tool twice.** Two structure lookups, then two different tools on the results.
+
+Notice that we hand the agent the SMARTS pattern in the question — asking a model to write SMARTS from memory is
+precisely what this notebook tells you not to do.
+
+The answer contains a useful surprise: the Tanimoto is about **0.41**, and both molecules contain the quinazoline.
+Two drugs with the same core, the same target and the same clinical use score barely above the 0.3 that the tool's
+own docstring calls "structurally different". Fingerprint similarity is a narrow question, not a verdict.
+"""
 
 # %%
 if HAVE_KEY:
@@ -367,6 +567,16 @@ if HAVE_KEY:
         "(SMARTS: c1ccc2ncncc2c1)? Report the numbers."
     )
     print("\nFINAL ANSWER:\n", result)
+
+# %% [markdown]
+"""
+**A question with a trap in it.** Imatinib is a kinase inhibitor, so the model's prose will *want* to say "likely
+active" — but its real target is BCR-ABL, and the in-house model knows only EGFR chemistry.
+
+Two things to check in the answer. Did the agent report the reliability flag, as its instructions require? And does
+its closing sentence agree with its own numbers? Correct tool output with wrong narration is the single most common
+agent failure in practice, and it is invisible unless you read both.
+"""
 
 # %%
 if HAVE_KEY:
@@ -390,6 +600,12 @@ but a model that can write Python, so it works with essentially any chat model. 
 self-hosted model and the tool-calling agent starts producing malformed calls, try the code agent before blaming
 your tools — or move up to `deepseek/deepseek-v4-pro`, which DeepSeek's own tool-calling documentation uses in its
 examples.
+
+**What this particular run tests.** Five molecules, three properties each, sorted, plus a rule applied. A
+`ToolCallingAgent` would need ten round trips — `get_smiles` then `get_descriptors` for each molecule, one LLM call
+apiece — and would then have to hold fifteen numbers in its context while sorting them by hand. The code agent writes
+one loop and runs it, and pandas does the sorting exactly. Watch the Python it generates: that snippet is the honest, auditable record of
+what it actually did, which is more than you get from most software.
 """
 
 # %%
@@ -411,6 +627,18 @@ if HAVE_KEY:
 
 Real workflows split responsibilities: one agent knows the databases, another the modelling, a **manager** plans and
 delegates. smolagents implements this by giving a manager agent other agents as "tools" (`managed_agents`).
+"""
+
+# %% [markdown]
+"""
+**Three agents: two specialists and a manager.** Each specialist gets only the tools it needs, plus a `name` and — the
+part that matters — a `description`. The description is what the manager reads when it decides whom to delegate to;
+it plays exactly the role a docstring plays for a tool. A vague description gives you a manager that guesses.
+
+The manager is a `CodeAgent` with `tools=[]`: its only tools *are* the two experts, and it writes Python that calls
+them. Splitting the toolbox this way keeps every individual decision simple, which is why a small multi-agent system
+often beats one agent holding twenty tools. The price is real: each delegation is another full LLM conversation, so
+this cell is the slowest and most expensive in the notebook.
 """
 
 # %%
@@ -449,6 +677,16 @@ An agent's answer is only useful if it is *right*. Build a small benchmark whose
 and measure how often the agent gets it right. (This is a miniature of what ChemBench and ChemLLMBench do.)
 """
 
+# %% [markdown]
+"""
+**The benchmark.** Five questions with numeric answers, chosen so that each probes a different weakness: a molecular
+weight (arithmetic over a formula), two counts — aromatic rings and hydrogen-bond donors — (counting, the classic
+failure), a Crippen logP (a *specific method* the model cannot reproduce, only approximate), and rotatable bonds (a
+definition question, where RDKit's convention is the only sensible ground truth).
+
+`REFERENCE_SMILES` is the offline fallback, so the benchmark still has a ground truth when PubChem is unreachable.
+"""
+
 # %%
 # Reference SMILES (from PubChem) so the ground truth can be computed even if the network is unavailable
 REFERENCE_SMILES = {
@@ -467,6 +705,18 @@ BENCHMARK = [
     {"question": "How many rotatable bonds does imatinib have? Answer with a number only.", "name": "imatinib", "key": "rotatable_bonds"},
 ]
 
+# %% [markdown]
+"""
+**Ground truth is computed, never typed in.** `ground_truth` runs our own tools — `get_smiles`, falling back to the
+reference SMILES, then `get_descriptors` — so every answer comes from RDKit. The printed dictionary should read
+caffeine 194.19, gefitinib 3, atorvastatin 4, ibuprofen 3.07, imatinib 7.
+
+Be precise about what this measures. We are testing whether the agent agrees with **RDKit**, not whether it agrees
+with nature: a different logP implementation would give a different "truth" for ibuprofen. Every benchmark measures
+agreement with its reference, and choosing that reference honestly is the actual work of building one.
+"""
+
+# %%
 def ground_truth(entry):
     """Ground truth from RDKit. Uses PubChem for the structure, falling back to the reference SMILES above."""
     smi = get_smiles(entry["name"])
@@ -477,17 +727,44 @@ def ground_truth(entry):
 truth = {e["name"]: ground_truth(e) for e in BENCHMARK}
 print(truth)
 
+# %% [markdown]
+"""
+**Grading free text.** Models answer in sentences even when told not to, so `extract_number` pulls the first number
+out of the reply with a regex.
+
+This is crude, and knowing *how* crude is part of the lesson: it would take the "5" out of "the rule of 5 is
+satisfied". Every LLM benchmark you read in a paper has a function like this one somewhere, and its failures are
+rarely reported. When you see a headline accuracy number, ask how the answers were parsed.
+"""
+
 # %%
 def extract_number(text):
     import re
     m = re.findall(r"-?\d+\.?\d*", str(text).replace(",", ""))
     return float(m[0]) if m else None
 
+# %% [markdown]
+"""
+**The experiment.** For each question we ask twice: the bare model, then a **fresh** agent with the tools — a new
+agent per question, so that nothing leaks through its memory from the previous answer.
+
+`tol = max(0.05 * abs(gt), 0.11)` is the grading tolerance: 5 % of the true value, with a small absolute floor so
+that an answer near zero is not held to an impossible standard. Be clear-eyed about how lenient that is. `max` means
+the floor can only ever *widen* the window, so for the aromatic-ring question (truth 3) the tolerance is 0.15 and an
+answer of 3.1 would be scored correct — this code cannot force the integer answers to match exactly, and an honest
+benchmark of counting ability would compare integers with `==`. Tighten it and see whether the bare model's score
+changes. `verbosity_level=0` silences the traces so the table stays readable.
+
+Expect the agent close to 100 % and the bare model well below it, with its errors concentrated in the counting
+questions — the ones where sounding right and being right come apart.
+"""
+
+# %%
 if HAVE_KEY:
     rows = []
     for e in BENCHMARK:
         gt = truth[e["name"]]
-        tol = max(0.05 * abs(gt), 0.11)                          # 5 % tolerance (integers must match exactly)
+        tol = max(0.05 * abs(gt), 0.11)                          # 5 % tolerance, with a small absolute floor
         # (a) the bare LLM
         raw = model([{"role": "user", "content": [{"type": "text", "text": e["question"]}]}]).content
         raw_val = extract_number(raw)

@@ -31,7 +31,7 @@ introductory chemoinformatics course usually states.
 | 01 | 90 min | no | no | 00 |
 | 02 | 90–120 min | no | no | 01 |
 | 03 | 90 min | no | no | 00–01 |
-| 04 | 120 min (standardisation ≈ 100 s, UMAP ≈ 30 s) | no | no | 03 |
+| 04 | 100 min (standardisation ≈ 30 s, UMAP ≈ 20 s) | no | no | 03 |
 | 05 | 120 min (all models ≈ 5 min total) | no | no | 04 |
 | 06 | 90 min (MLP + GCN ≈ 1 min GPU, 1 min CPU each) | **yes** | no | 05 |
 | 07 | 90 min (RL ≈ 3 min, GA ≈ 2 min) | **yes** | no | 02, 06 |
@@ -55,6 +55,14 @@ missed session 04 can still do 05 and 08.
   GPU and shrink the workload automatically (`GPU`/`device` variables in the setup cells).
 - **Offline resilience**: session 03 checks whether PubChem/ChEMBL/PDB/Hugging Face answer, and uses the cached datasets
   in `data/` when they don't — so a firewalled classroom can still run it.
+- **Session 04 runs on a subset.** Standardising all 5568 EGFR records costs about two minutes, almost all of it in the
+  tautomer canonicalisation (~25 ms per molecule; capping `SetMaxTautomers` lower does not help much). The loading cell
+  therefore takes `N_SAMPLE = 1500` records — every salt and every charged entry, plus a random fill — which brings the
+  standardisation cell down to ~30 s while keeping 18 InChIKey duplicates and 2 contradictory-replicate structures for
+  the deduplication and aggregation demos. Set `N_SAMPLE = None` for the full run. Note that the subset is enriched in
+  messy structures (29 % against 8 %), so section 1's proportions are not representative of ChEMBL — say so in class.
+  The `data/EGFR_curated.csv` committed here is still the **full** 5511-compound curation, so sessions 05, 07 and 08 are
+  unaffected.
 - **Version drift**: notebooks pin nothing on purpose, so they follow Colab's stack. If something breaks after a Colab
   update, run `python src_nb/build.py <nn> --execute` locally to see the error, fix `src_nb/*.py`, and rebuild.
 

@@ -94,7 +94,7 @@ CREDITS.md     full attribution of every adapted source
 |---|---|---|
 | `esol_delaney.csv` | 1128 compounds, measured aqueous solubility | Delaney 2004, via [DeepChem/MoleculeNet](https://github.com/deepchem/deepchem) (MIT) |
 | `EGFR_compounds_chembl.csv` | 5568 EGFR inhibitors with IC50 | [TeachOpenCADD](https://github.com/volkamerlab/teachopencadd) T001 output; ChEMBL (CC BY-SA 3.0) |
-| `EGFR_curated.csv` | the same set, standardised and deduplicated in session 04 | derived here; ChEMBL (CC BY-SA 3.0) |
+| `EGFR_curated.csv` | the same set, standardised and deduplicated with the session-04 pipeline (5511 compounds; session 04 itself runs on a 1500-record subset for speed) | derived here; ChEMBL (CC BY-SA 3.0) |
 | `hERG_chembl_walters.csv` | 4042 compounds with hERG pIC50 | [PatWalters/practical_cheminformatics_tutorials](https://github.com/PatWalters/practical_cheminformatics_tutorials) (MIT); ChEMBL data |
 | `chembl_drugs_walters.smi` | 1203 approved drugs | [PatWalters/datafiles](https://github.com/PatWalters/datafiles); ChEMBL (CC BY-SA 3.0) |
 | `zinc_50k.csv` | 50 000 ZINC molecules with logP/QED/SA | subset of the ZINC-250k set from [chemical_vae](https://github.com/aspuru-guzik-group/chemical_vae) (Apache-2.0) |

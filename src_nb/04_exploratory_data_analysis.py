@@ -19,7 +19,9 @@
 - **cluster** molecules by similarity (Butina, k-means) and pick diverse representatives;
 - visualise **chemical space** with PCA and UMAP, and spot **activity cliffs**.
 
-We work with the EGFR inhibitor dataset built in session 03 (≈5 500 compounds from ChEMBL).
+We work with the EGFR inhibitor dataset built in session 03 (5568 records from ChEMBL). Standardisation is slow, so
+the cell below the setup takes a **1500-record subset** enriched in exactly the structures that need cleaning — read
+that cell before you start, and set `N_SAMPLE = None` if you would rather run the whole thing.
 
 ---
 > **Credits — thank you to the original authors.** This session adapts, updates and revises material from
@@ -55,7 +57,40 @@ def data_path(filename):
     local = os.path.join("..", "data", filename)
     return local if os.path.exists(local) else f"{REPO_RAW}/data/{filename}"
 
+# %% [markdown]
+"""
+### The dataset — and why we work on a subset of it
+
+The full set is 5568 EGFR bioactivity records from ChEMBL. Standardising all of them costs about two minutes,
+because the tautomer canonicalisation in section 1 takes ~25 ms per molecule and there is no way around that — too
+long to sit and watch in a practical. So we subsample.
+
+The subsample is **not** random. A random 1500 of 5568 would throw away most of the very records this session is
+about: standardisation only *changes* salts, charged species and non-canonical tautomers, and those are a small
+minority. So the cell below keeps **every** salt (a `.` in the SMILES) and **every** charged entry, then fills up to
+`N_SAMPLE` with a random sample of the rest.
+
+Two consequences to keep in mind:
+
+- The subset is deliberately **enriched** in messy structures — 436 of 1500 records, 29 %, against 8 % in the full
+  set. So section 1's counts are not representative of ChEMBL; they are chosen to make the problem visible.
+- Everything after section 1 sees ~1490 compounds instead of 5511, so counts (duplicates, PAINS hits, clusters,
+  activity cliffs) are all smaller. The `data/EGFR_curated.csv` shipped with this repository is the **full**
+  5511-compound version, and that is what sessions 05, 07 and 08 load — nothing downstream shrinks.
+
+Set `N_SAMPLE = None` to run the whole thing on all 5568 records; everything works, it just takes the extra two
+minutes.
+"""
+
+# %%
 df = pd.read_csv(data_path("EGFR_compounds_chembl.csv"), index_col=0).rename(columns={"IC50": "IC50_nM"})
+
+N_SAMPLE = 1500                                   # None = all 5568 records (~2 min to standardise)
+if N_SAMPLE and N_SAMPLE < len(df):
+    needs_work = df["smiles"].str.contains(r"\.|[+-]\]")     # salts and charged species: keep all of them
+    df = pd.concat([df[needs_work],
+                    df[~needs_work].sample(N_SAMPLE - int(needs_work.sum()), random_state=27)]).sort_index()
+    print(f"working on {len(df)} of 5568 records, of which {int(needs_work.sum())} need standardisation")
 print(df.shape); df.head(3)
 
 # %% [markdown]
@@ -116,7 +151,7 @@ Notice the two pyridinol/pyridone tautomers now map to a **single** SMILES, and 
 """
 
 # %%
-# Apply to the whole dataset (~1 min: tautomer canonicalisation is the slow step)
+# Apply to the whole dataset (~30 s on the 1500-record subset: tautomer canonicalisation is the slow step)
 t0 = time.time()
 df["smiles_std"] = [standardize(s) for s in tqdm(df["smiles"])]
 print(f"{time.time() - t0:.0f} s; failed: {df['smiles_std'].isna().sum()}")
@@ -556,7 +591,10 @@ print("saved EGFR_curated.csv:", data[cols].shape)
 """
 ## 9. Exercises: repeat with the hERG dataset
 
-`hERG_chembl_walters.csv` (4 042 compounds with pIC50 against the hERG potassium channel — the classic cardiotoxicity anti-target).
+`hERG_chembl_walters.csv` (4 042 compounds with pIC50 against the hERG potassium channel — the classic cardiotoxicity
+anti-target). Standardising all 4 042 takes a couple of minutes, so subsample it the same way as the EGFR set if you
+are short of time — the `needs_work` trick in the loading cell works unchanged on any dataframe with a `SMILES`
+column.
 
 1. Standardise and deduplicate. How many duplicates / contradictory replicates do you find?
 2. Compute the scaffold statistics. Is hERG data more or less diverse than the EGFR data (scaffolds per molecule)?
@@ -594,8 +632,9 @@ h["mol"] = h["smiles"].apply(Chem.MolFromSmiles)
 # 2. scaffolds
 h["scaffold"] = h["mol"].apply(scaffold_smiles)
 print(f"{h['scaffold'].nunique()} scaffolds for {len(h)} molecules = {h['scaffold'].nunique()/len(h):.2f} per molecule")
-# ~0.6-0.7 per molecule vs 0.35 for EGFR: the hERG set is far more diverse (it is an anti-target,
-# so compounds come from many unrelated projects).
+# ~0.6-0.7 per molecule vs 0.48 for the EGFR subset (0.35 for the full EGFR set): the hERG data is far
+# more diverse, because it is an anti-target and the compounds come from many unrelated projects.
+# Note that scaffolds-per-molecule rises as a set gets smaller, so compare like with like.
 
 # 3. clustering
 h_fps = [fpgen.GetFingerprint(m) for m in h["mol"]]

@@ -79,6 +79,12 @@ function; MD second, because it needs the force-field and integrator concepts th
   unaffected.
 - **Version drift**: notebooks pin nothing on purpose, so they follow Colab's stack. If something breaks after a Colab
   update, run `python src_nb/build.py <nn> --execute` locally to see the error, fix `src_nb/*.py`, and rebuild.
+- **Session 09 compiles AutoDock Vina on Colab.** PyPI has `vina` wheels only up to Python 3.12 and Colab now runs a
+  newer Python, so the setup cell installs the rest of the stack first (pip installs all-or-nothing — with one combined
+  `pip install`, Vina's failure took RDKit down with it), then tries `pip install --only-binary=:all: vina` and, when no
+  wheel exists, installs SWIG and the Boost headers with `apt-get` and builds Vina from source (≈2 min on the 2 cores of
+  a free runtime; ≈3 min for the whole cell). The moment the Vina maintainers publish wheels for Colab's Python the fast
+  path takes over by itself. Locally, `pip install vina` needs the same `swig` + `libboost-*-dev` packages on Python ≥ 3.13.
 
 ## Suggested assessment
 

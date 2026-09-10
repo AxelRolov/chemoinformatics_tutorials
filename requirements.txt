@@ -39,6 +39,9 @@ transformers
 openmm>=8.1
 mdanalysis
 pdbfixer
+# vina has wheels only up to Python 3.12; on 3.13+ pip builds it from source, which needs SWIG and the Boost headers
+# (Debian/Ubuntu: apt-get install swig libboost-dev libboost-thread-dev libboost-serialization-dev
+#  libboost-filesystem-dev libboost-program-options-dev; conda: conda install -c conda-forge vina instead)
 vina
 meeko
 prolif

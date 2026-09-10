@@ -453,8 +453,12 @@ print(f"density ≈ {mass_g / V_cm3:.3f} g/cm3")
 ## 5. Optional (GPU): a real protein — the villin headpiece
 
 The 35-residue villin headpiece (HP35) is a classic fast-folding mini-protein. The file below (from the OpenMM tutorials)
-is already solvated. On a T4 GPU, 100 ps take about a minute; on CPU it is ~10 minutes, so the cell only runs when a
-GPU is present (change `RUN_PROTEIN` to force it).
+is already solvated. It is 8867 atoms against the dipeptide's 2269, and that is the point of the section: the same six
+lines of OpenMM, a system four times larger.
+
+On a T4 GPU the 100 ps take about a minute. On two CPU cores this system runs at roughly **4.6 ns/day**, so the same
+100 ps take **about half an hour** — which is why the cell only runs when a GPU is present. Set `RUN_PROTEIN = True`
+to force it anyway, and reduce `simv.step(50_000)` if you only want to watch the machinery work.
 """
 
 # %%
@@ -487,7 +491,7 @@ if RUN_PROTEIN:
     axes[1].bar(ca.resids, rmsf.results.rmsf); axes[1].set_xlabel("residue"); axes[1].set_ylabel("Cα RMSF (Å)")
     plt.tight_layout(); plt.show()
 else:
-    print("Skipped (no GPU detected). Set RUN_PROTEIN = True to run on CPU (~10 min).")
+    print("Skipped (no GPU detected). Set RUN_PROTEIN = True to run it on CPU (~30 min for 100 ps).")
 
 # %% [markdown]
 """

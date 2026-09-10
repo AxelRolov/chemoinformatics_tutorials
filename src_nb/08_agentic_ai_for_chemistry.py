@@ -2,7 +2,7 @@
 """
 # 08 · Agentic AI for chemistry: LLMs that use tools
 
-**Chemoinformatics practicals — Session 8 of 9**
+**Chemoinformatics practicals — Session 8 of 11**
 
 > **Where this comes from.** These notebooks are a compilation of open teaching material generously published
 > by the chemoinformatics community. The original authors are named in the credits below and in
@@ -901,8 +901,9 @@ print(f"accuracy without get_smiles: {ok / len(BENCHMARK):.0%}")
 That closes the data-and-AI thread of the course: you have gone from `print("Hello")` to agents that design and
 evaluate molecules, working throughout with **2D** representations of structure.
 
-Next session: **09 · Molecular modeling and molecular dynamics** — we drop the 2D approximation, give molecules
-coordinates, and watch them move. It is the natural place to end, because it shows what the representations of
-session 02 were leaving out, and where the next generation of models (3D and equivariant networks, structure-based
-generation, co-folding) is heading.
+The last three sessions drop the 2D approximation: **09 · Protein–ligand docking** puts a drug into its protein,
+**10 · Molecular modeling and molecular dynamics** gives molecules coordinates and watches them move, and **11 · MD of a
+protein–ligand complex** tests whether the docked pose holds. It is the natural place to end, because it shows what the
+representations of session 02 were leaving out, and where the next generation of models (3D and equivariant networks,
+structure-based generation, co-folding) is heading.
 """

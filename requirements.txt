@@ -35,11 +35,16 @@ torch>=2.2
 torch_geometric
 transformers
 
-# molecular dynamics (session 03)
+# molecular modeling, docking and MD (sessions 09-11)
 openmm>=8.1
 mdanalysis
+pdbfixer
+vina
+meeko
+prolif
+openbabel-wheel
 
-# agents (session 09)
+# agents (session 08)
 smolagents[litellm]
 
 # notebook build system (instructors)

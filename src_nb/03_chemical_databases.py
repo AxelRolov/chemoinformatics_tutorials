@@ -2,7 +2,7 @@
 """
 # 03 · Chemical databases: PubChem, ChEMBL, the PDB and open datasets
 
-**Chemoinformatics practicals — Session 3 of 9**
+**Chemoinformatics practicals — Session 3 of 11**
 
 > **Where this comes from.** These notebooks are a compilation of open teaching material generously published
 > by the chemoinformatics community. The original authors are named in the credits below and in

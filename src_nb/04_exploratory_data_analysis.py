@@ -2,7 +2,7 @@
 """
 # 04 · Exploratory data analysis: standardisation, scaffolds, clustering and chemical space
 
-**Chemoinformatics practicals — Session 4 of 9**
+**Chemoinformatics practicals — Session 4 of 11**
 
 > **Where this comes from.** These notebooks are a compilation of open teaching material generously published
 > by the chemoinformatics community. The original authors are named in the credits below and in

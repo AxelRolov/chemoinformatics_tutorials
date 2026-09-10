@@ -1,8 +1,8 @@
 # %% [markdown]
 """
-# 09 · Molecular modeling basics: conformers, force fields and molecular dynamics
+# 10 · Molecular modeling basics: conformers, force fields and molecular dynamics
 
-**Chemoinformatics practicals — Session 9 of 9**
+**Chemoinformatics practicals — Session 10 of 11**
 
 > **Where this comes from.** These notebooks are a compilation of open teaching material generously published
 > by the chemoinformatics community. The original authors are named in the credits below and in
@@ -495,15 +495,16 @@ else:
 
 | task | method | what you learn |
 |---|---|---|
-| Where does a ligand bind, and how? | **docking** (AutoDock Vina, Gnina; TeachOpenCADD T015) | pose + crude score |
-| Is the pose stable? Which interactions persist? | **protein–ligand MD** (T019/T020; interaction fingerprints with ProLIF) | dynamics of the complex |
+| Where does a ligand bind, and how? | **docking** (AutoDock Vina, Gnina; TeachOpenCADD T015 — **session 09**) | pose + crude score |
+| Is the pose stable? Which interactions persist? | **protein–ligand MD** (T019/T020 → **session 11**; interaction fingerprints with ProLIF) | dynamics of the complex |
 | How strongly does it bind? | **free-energy methods** (FEP, TI, MM/GBSA) | ΔG of binding, ± 1 kcal/mol |
 | Which pockets exist? Are they druggable? | MD + pocket detection (T014) | cryptic pockets, flexibility |
 | Features for machine learning | conformers, 3D pharmacophores, MD-derived descriptors, 3D/equivariant GNNs (T036) | representation beyond 2D |
 
-**Protein–ligand MD in practice** needs three extra steps we skipped today: preparing the protein (missing atoms,
-protonation — `pdbfixer`, PROPKA), parametrising the ligand (GAFF or OpenFF via `openmmforcefields`), and much longer
-sampling (≥ 100 ns, several replicas). TeachOpenCADD **T019** walks through exactly that for EGFR–gefitinib analogues.
+**Protein–ligand MD in practice** needs three extra steps we skipped today: preparing the protein (missing atoms and
+loops, protonation — `pdbfixer`, PROPKA), parametrising the ligand (GAFF or OpenFF), and much longer sampling (≥ 100 ns,
+several replicas). Session 09 already prepared the EGFR receptor and docked gefitinib into it; **session 11** takes that
+pose and does the rest (following TeachOpenCADD **T019/T020**).
 
 ## Exercises to finish
 1. Re-run the alanine dipeptide simulation with a **4 fs** time step (keep `constraints=app.HBonds`). What happens to the temperature and energy, and why? (Hint: hydrogen mass repartitioning is what people do to get away with 4 fs.)
@@ -512,7 +513,7 @@ sampling (≥ 100 ns, several replicas). TeachOpenCADD **T019** walks through ex
 4. Generate 20 conformers of gefitinib and compute their NPR shape descriptors (session 02). How much does the *shape* change between conformers?
 
 ## Further reading
-- TeachOpenCADD T019/T020 (protein–ligand MD with OpenMM, analysis with MDAnalysis).
+- TeachOpenCADD T019/T020 (protein–ligand MD with OpenMM, analysis with MDAnalysis) — adapted in session 11.
 - OpenMM user guide: <http://docs.openmm.org/latest/userguide/> and the OpenMM cookbook.
 - MDAnalysis user guide: <https://userguide.mdanalysis.org/>.
 - Braun *et al.*, *Best practices for foundations in molecular simulations*, Living J. Comp. Mol. Sci. **2019**, 1, 5957.
@@ -520,17 +521,13 @@ sampling (≥ 100 ns, several replicas). TeachOpenCADD **T019** walks through ex
 
 ---
 
-**This was the last session. Congratulations!** Over nine notebooks you went from `print("Hello")` to curating real
-bioactivity data, building and validating QSAR models, training graph networks, generating molecules and putting an
-LLM to work with chemistry tools — and finally to giving molecules coordinates and letting them move.
+**Next: from a peptide in water back to the drug in its protein.** Session 09 asked *where* gefitinib binds to EGFR and
+found that a docking score is not an affinity. Session 11 takes the docked (or crystal) pose and does for the whole
+protein–ligand complex what we did today for alanine dipeptide: parametrise, solvate, equilibrate, simulate, analyse —
+and asks whether the pose survives.
 
-Notice what this last session changes about the previous eight. Everything from session 02 onwards described molecules
-as **graphs**: a fingerprint, a descriptor vector, an adjacency matrix. That approximation carried us a long way, and
-for most property-prediction tasks it still wins. But a ligand does not bind as a graph; it binds as a particular
-conformation of a flexible object, in water, to a protein that is itself moving. Molecular modeling is where that
-physics comes back, and it is the bridge to what the field is building next: 3D and equivariant neural networks,
-structure-based generative models, co-folding, and free-energy methods.
-
-Two habits are worth keeping from all nine sessions: *look at your data before you model it*, and *ask what your
-representation is throwing away*.
+Notice what sessions 09–11 change about sessions 02–08. Everything there described molecules as **graphs**: a
+fingerprint, a descriptor vector, an adjacency matrix. That approximation carried us a long way, and for most
+property-prediction tasks it still wins. But a ligand does not bind as a graph; it binds as a particular conformation of
+a flexible object, in water, to a protein that is itself moving. Molecular modeling is where that physics comes back.
 """

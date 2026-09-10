@@ -1,6 +1,6 @@
 # Instructor notes
 
-Practical notes for running these nine sessions as a course (~2 h per session works well, in person or hybrid).
+Practical notes for running these eleven sessions as a course (~2 h per session works well, in person or hybrid).
 The material is a compilation of other people's open teaching resources — see [`CREDITS.md`](CREDITS.md) — updated
 and revised with Claude; please pass the credit on to the original authors when you use it.
 
@@ -11,10 +11,10 @@ introductory chemoinformatics course usually states.
 
 | Learning objective | Sessions |
 |---|---|
-| define the scope, objectives and applications of chemoinformatics | 00 intro, 01, and the closing discussion of 09 |
+| define the scope, objectives and applications of chemoinformatics | 00 intro, 01, and the closing discussions of 10 and 11 |
 | identify and use major chemical data resources and databases | **03** |
 | explain and compare methods for representing chemical structures digitally | **01, 02** |
-| understand molecular-modeling principles and their relevance to representation, property prediction and design | **09** (+ 3D shape in 02, 3D GNNs mentioned in 06) |
+| understand molecular-modeling principles and their relevance to representation, property prediction and design | **09, 10, 11** (+ 3D shape in 02, 3D GNNs mentioned in 06) |
 | prepare and curate chemical datasets | **04** (+ the curation part of 03) |
 | construct and interpret basic QSPR/QSAR models | **05** |
 | describe the main machine-learning approaches used in chemoinformatics | **05, 06** |
@@ -36,10 +36,16 @@ introductory chemoinformatics course usually states.
 | 06 | 90 min (MLP + GCN ≈ 1 min GPU, 1 min CPU each) | **yes** | no | 05 |
 | 07 | 90 min (RL ≈ 3 min, GA ≈ 2 min) | **yes** | no | 02, 06 |
 | 08 | 90 min | no | **yes** (DeepSeek key) | 05 |
-| 09 | 90 min (MD cell ≈ 2 min CPU / 10 s GPU) | **yes** | no | 01–02 |
+| 09 | 100 min (Vina: redocking ≈ 30 s, seed table ≈ 1 min, mini screen ≈ 4 min — CPU only) | no | no | 02, 03 |
+| 10 | 90 min (MD cell ≈ 2 min CPU / 10 s GPU) | **yes** | no | 01–02 |
+| 11 | 120 min (GPU: ≈ 8 min of simulation; CPU: ≈ 10 min token run + precomputed trajectory) | **yes** | no | 09, 10 |
 
 Sessions 04 → 05 → 08 form a chain through the EGFR dataset; `data/EGFR_curated.csv` is committed so a student who
-missed session 04 can still do 05 and 08.
+missed session 04 can still do 05 and 08 (session 09 also draws its screening set from it). Sessions 09 → 10 → 11
+form the structural thread: 09 docks gefitinib into EGFR and saves `gefitinib_docked_poses.sdf`, 10 introduces
+molecular dynamics on a peptide, 11 simulates the docked complex (a copy of the poses is in `data/md/`, so 11 also
+works on its own). The order is deliberate: docking first, because it needs only a structure and a scoring
+function; MD second, because it needs the force-field and integrator concepts that 10 builds up on a small system.
 
 ## Practical set-up
 
@@ -51,8 +57,16 @@ missed session 04 can still do 05 and 08.
   `get_api_key()` — and LiteLLM also handles Gemini (free tier, no card), OpenAI, Anthropic, Mistral, Azure and Ollama.
   If a smaller model produces malformed tool calls, switch that exercise to the `CodeAgent`, which does not rely on
   the provider's structured tool-calling API.
-- **Colab quotas**: free GPU access is not guaranteed. Every notebook falls back to CPU; sessions 06, 07 and 09 detect the
-  GPU and shrink the workload automatically (`GPU`/`device` variables in the setup cells).
+- **Colab quotas**: free GPU access is not guaranteed. Every notebook falls back to CPU; sessions 06, 07, 10 and 11 detect the
+  GPU and shrink the workload automatically (`GPU`/`device` variables in the setup cells). Session 11 on CPU runs a
+  token 2 ps simulation so that every cell executes, then analyses `data/md/egfr_gefitinib_100ps.xtc` (produced with
+  the same code); with a GPU it analyses its own 100 ps run.
+- **Sessions 09 and 11 need the RCSB PDB** for one download (entry 4WKQ). If it is unreachable they use `data/pdb/4WKQ.pdb`.
+- **Session 11's ligand parametrisation is deliberately pip-only**: GAFF atom types from Open Babel, MMFF94 charges from
+  RDKit, and a hand-written residue template on top of `gaff-2.11.xml`. The standard route (TeachOpenCADD T019:
+  `openmmforcefields` + OpenFF toolkit + AmberTools for AM1-BCC charges) needs conda, which Colab does not have without a
+  kernel restart. Say in class that MMFF94 charges are the compromise (Exercise 3 quantifies it), and that production
+  work uses AM1-BCC/RESP or OpenFF.
 - **Offline resilience**: session 03 checks whether PubChem/ChEMBL/PDB/Hugging Face answer, and uses the cached datasets
   in `data/` when they don't — so a firewalled classroom can still run it.
 - **Session 04 runs on a subset.** Standardising all 5568 EGFR records costs about two minutes, almost all of it in the
@@ -78,7 +92,9 @@ missed session 04 can still do 05 and 08.
   of session 07, filter for PAINS/SA/Ro5, and defend 5 proposed molecules; or (b) build a chemistry agent with three new
   tools and a 10-question benchmark showing that it beats the bare LLM.
 - **Discussion topics** that work well as short oral presentations: the label-noise case in 05 §6 (why gefitinib scores
-  below 0.5), why a genetic algorithm beats neural models on GuacaMol, and what "novel" should mean for a generated molecule.
+  below 0.5), why a genetic algorithm beats neural models on GuacaMol, what "novel" should mean for a generated molecule,
+  why the redocking in 09 "fails" the 2 Å rule with the core in place (and whether the rule is the right one), and what a
+  100 ps trajectory can and cannot say about binding (11).
 
 ## Common student difficulties
 
@@ -89,6 +105,8 @@ missed session 04 can still do 05 and 08.
 4. **Believing a good random-split metric** (05). The random vs. scaffold split table is the single most important slide of the course.
 5. **Reading generated molecules uncritically** (07). Always ask "could a chemist make this?" — the SA-score box plot answers it.
 6. **Trusting the agent's prose** (08). The benchmark section is there to make the distinction between the LLM's words and the tools' numbers concrete.
+7. **Reading a docking score as an affinity** (09). The mini screen (ρ ≈ 0 with pIC50, ρ ≈ −0.8 with size) is the cure; have students predict the outcome before running it.
+8. **Import order in 11**: Open Babel must be imported before other SWIG-based libraries (Vina); the setup cell does this, but a student who adds `from vina import Vina` at the top will crash Open Babel with `swig::stop_iteration`.
 
 ## Editing the material
 

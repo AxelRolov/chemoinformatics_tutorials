@@ -2,7 +2,7 @@
 """
 # 06 · Deep learning for molecules: neural networks, graph neural networks and chemical language models
 
-**Chemoinformatics practicals — Session 6 of 9**
+**Chemoinformatics practicals — Session 6 of 11**
 
 > **Where this comes from.** These notebooks are a compilation of open teaching material generously published
 > by the chemoinformatics community. The original authors are named in the credits below and in

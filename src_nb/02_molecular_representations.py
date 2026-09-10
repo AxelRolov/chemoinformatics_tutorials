@@ -2,7 +2,7 @@
 """
 # 02 · Molecular representations: from structures to numbers
 
-**Chemoinformatics practicals — Session 2 of 9**
+**Chemoinformatics practicals — Session 2 of 11**
 
 > **Where this comes from.** These notebooks are a compilation of open teaching material generously published
 > by the chemoinformatics community. The original authors are named in the credits below and in
@@ -484,7 +484,7 @@ display(Draw.MolsToGridImage(drugs["mol"].iloc[idx].tolist(), legends=[f"{i} T={
 
 Everything so far was 2D. Many properties (binding to a protein, crystal packing, spectroscopy) depend on **3D shape**.
 RDKit can generate plausible 3D **conformers** with the ETKDG algorithm (distance geometry + experimental torsion
-preferences) and refine them with a force field (MMFF94). We look at this properly in session 09; here is a first taste.
+preferences) and refine them with a force field (MMFF94). We look at this properly in session 10; here is a first taste.
 """
 
 # %%

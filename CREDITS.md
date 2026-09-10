@@ -22,7 +22,8 @@ rather than this repository.
 - **T005** Compound clustering → session 04 (Butina clustering, distance matrices, cluster analysis).
 - **T007** Ligand-based screening: machine learning → session 05 (QSAR setup, metrics, ROC curves).
 - **T008/T011/T013** Protein data acquisition (PDB), online API webservices, PubChem → session 03.
-- **T019/T020** Molecular dynamics simulation and analysis → session 09 (OpenMM workflow, force-field theory, analysis logic).
+- **T015/T016** Protein–ligand docking and protein–ligand interactions → session 09 (redocking workflow, box from the co-crystallised ligand, interaction analysis of the EGFR complex; smina/PLIP replaced by AutoDock Vina/ProLIF).
+- **T019/T020** Molecular dynamics simulation and analysis → sessions 10 and 11 (OpenMM workflow, force-field theory, protein/ligand preparation, RMSD and hydrogen-bond analysis of the EGFR–inhibitor trajectory).
 - **T022** Ligand-based screening: neural networks → session 06.
 - **T033** Molecular representations → session 02 (representation taxonomy, conformers, fingerprint bit visualisation).
 - **T034/T035** Recurrent and graph neural networks → sessions 06–07.
@@ -71,19 +72,19 @@ Also: Pat Walters' blog *Practical Cheminformatics* — <https://practicalchemin
 (also in the course bibliography) — the representation taxonomy (session 02) and the deep-learning/GNN chapters (session 06).
 
 ### IBM3202 — Molecular Modeling and Simulation — pb3lab (PUC Chile)
-<https://github.com/pb3lab/ibm3202> · **MIT** — `lab07_MDsims`, `lab08_MDanalysis` → session 09
+<https://github.com/pb3lab/ibm3202> · **MIT** — `lab07_MDsims`, `lab08_MDanalysis` → session 10
 (Colab-first MD teaching approach, trajectory analysis).
 
 ### OpenMM and its cookbook
-<https://github.com/openmm/openmm> (MIT/LGPL), <https://github.com/openmm/openmm-cookbook> (MIT) — session 09 workflow;
+<https://github.com/openmm/openmm> (MIT/LGPL), <https://github.com/openmm/openmm-cookbook> (MIT) — session 10 workflow;
 `data/md/alanine_dipeptide_solvated.pdb` and `data/md/villin_headpiece_solvated.pdb` come from these repositories.
 
 ### MDAnalysis
-<https://www.mdanalysis.org> · code GPL-2.0+, docs CC BY-SA — session 09 analysis (RMSD, RMSF, Ramachandran).
+<https://www.mdanalysis.org> · code GPL-2.0+, docs CC BY-SA — sessions 10 and 11 analysis (RMSD, RMSF, Ramachandran, hydrogen bonds).
 Michaud-Agrawal *et al.*, J. Comput. Chem. **2011**; Gowers *et al.*, SciPy **2016**.
 
 ### CCPBioSim biosim-analysis-workshop
-<https://github.com/CCPBioSim/biosim-analysis-workshop> · **CC BY-SA 4.0** — session 09 analysis structure.
+<https://github.com/CCPBioSim/biosim-analysis-workshop> · **CC BY-SA 4.0** — session 10 analysis structure; docking notebook (scoring functions, pitfalls) → session 09.
 
 ### Tutorial: LLM agents for chemistry — hesengg
 <https://github.com/hesengg/Tutorial_LLM_Agent_Chemistry> — session 08: the multi-agent architecture
@@ -115,6 +116,12 @@ session 06 (first neural net → PyTorch → GNN). No code reproduced (note the 
 | [PubChemPy](https://github.com/mcs07/PubChemPy) | PubChem access (session 03) | MIT |
 | [ChEMBL structure pipeline](https://github.com/chembl/ChEMBL_Structure_Pipeline) | standardisation reference (session 04) | MIT |
 | [py3Dmol](https://github.com/3dmol/3Dmol.js) | 3D visualisation | BSD-3 |
+| [AutoDock Vina](https://github.com/ccsb-scripps/AutoDock-Vina) (Trott & Olson 2010; Eberhardt *et al.* 2021) | docking engine (session 09) | Apache-2.0 |
+| [Meeko](https://github.com/forlilab/Meeko) (Forli lab) | ligand and receptor PDBQT preparation (session 09) | LGPL-2.1 |
+| [PDBFixer](https://github.com/openmm/pdbfixer) | structure preparation (sessions 09 and 11) | MIT |
+| [ProLIF](https://github.com/chemosim-lab/ProLIF) (Bouysset & Fiorucci 2021) | interaction fingerprints (sessions 09 and 11) | Apache-2.0 |
+| [Open Babel](https://github.com/openbabel/openbabel) (`openbabel-wheel`) | GAFF atom typing of the ligand (session 11) | GPL-2.0 |
+| [openmmforcefields](https://github.com/openmm/openmmforcefields) | `data/md/gaff-2.11.xml`, the GAFF 2.11 parameters (Wang *et al.* 2004) converted from AmberTools | MIT (conversion); GAFF parameters from AmberTools |
 | [ChemBERTa-77M-MTR](https://huggingface.co/DeepChem/ChemBERTa-77M-MTR) (DeepChem) | pre-trained embeddings (session 06) | MIT |
 | [Chemprop](https://github.com/chemprop/chemprop) | D-MPNN, discussed in session 06 | MIT |
 | [REINVENT 4](https://github.com/MolecularAI/REINVENT4) (MolecularAI) | RL formulation of session 07 | Apache-2.0 |
@@ -125,7 +132,7 @@ session 06 (first neural net → PyTorch → GNN). No code reproduced (note the 
 | [DeepChem](https://github.com/deepchem/deepchem) / MoleculeNet | ESOL dataset | MIT |
 | [ChEMBL](https://www.ebi.ac.uk/chembl) | bioactivity data | CC BY-SA 3.0 |
 | [PubChem](https://pubchem.ncbi.nlm.nih.gov) | compound data | public domain |
-| [RCSB PDB](https://www.rcsb.org) | structures | CC0 |
+| [RCSB PDB](https://www.rcsb.org) | structures; `data/pdb/4WKQ.pdb` (Yosaatmadja, Squire, McKeage & Flanagan, released 2014, unpublished) | CC0 |
 
 Additional inspiration for session 08 tasks: `MauricioCafiero/CheMLAgent`, `hoon-ock/AgentD`,
 ChemCrow (Bran *et al.*, Nat. Mach. Intell. 2024), Coscientist (Boiko *et al.*, Nature 2023).
@@ -137,9 +144,10 @@ ChemCrow (Bran *et al.*, Nat. Mach. Intell. 2024), Coscientist (Boiko *et al.*, 
 Everything of substance above comes from the projects listed. What was added here — updating the code to current
 library versions, porting every notebook to run start-to-finish in Colab, sequencing, exercises, and connective
 text — was assembled and revised **with Claude** (Anthropic) and then reviewed. Specifically: the sequencing into
-nine self-contained sessions; the learning objectives, exercises and hidden solutions; the unified EGFR dataset and its
+eleven self-contained sessions; the learning objectives, exercises and hidden solutions; the unified EGFR dataset and its
 curation pipeline (session 04); the pre-trained SMILES LSTM and the REINVENT-style RL and genetic-algorithm
 implementations of session 07; the chemistry tool set, multi-agent system and agent benchmark of session 08; the
-jupytext build system; and the connective text.
+jupytext build system; the docking validation and mini virtual screen of session 09; the pip-only GAFF ligand
+parametrisation and the 300 ps EGFR–gefitinib trajectory of session 11; and the connective text.
 
 None of that would be worth much on its own. If you cite anything from this repository, cite the original projects.

@@ -231,6 +231,13 @@ notebooks/*.dcd
 notebooks/*.xtc
 notebooks/agent_outputs/
 notebooks/frame_*.pdb
+notebooks/*.pdbqt
+notebooks/*.xml
+notebooks/*.chk
+notebooks/lig_frame_*.pdb
+# MDAnalysis XTC offset caches
+**/.*_offsets.npz
+**/.*_offsets.lock
 
 # Python
 __pycache__/

@@ -15,6 +15,15 @@
 > copy shipped with the course. No GPU is needed: AutoDock Vina runs on the CPU (the whole notebook computes for
 > about 6–8 minutes on the 2 cores of a free Colab runtime).
 
+> 🔧 **A note on installing Vina**, because you may see the setup cell mention it. Vina is C++ with Python bindings,
+> and the `vina` package on PyPI ships pre-compiled wheels only up to Python 3.12 — so on a newer runtime `pip
+> install vina` tries to compile it from source and fails. When that happens the setup cell downloads the *static
+> binary* that the AutoDock team publishes with every release and drives it through a small class offering the same
+> methods, so the code you read below is the same either way (the numbers are identical; the binary is a few seconds
+> slower per run because it rebuilds its grid each time). The banner printed by the setup cell tells you which of the
+> two you got. This is not an aside about our notebook: choosing between bindings, a binary and a container is a
+> normal part of using scientific software, and the packaging is broken more often than the science.
+
 **Learning goals.** After this session you will be able to
 - explain what a **docking** program does — a *search* over ligand poses driven by a *scoring function* — and what it does not do;
 - **prepare a receptor** from a PDB entry (waters, buffer molecules, modified residues, missing atoms, protonation) and a **ligand** from a SMILES, and say what the PDBQT format adds to a structure;
@@ -33,11 +42,17 @@
 
 # %%
 # @title ⚙️ Setup — run this cell first (≈1–2 min on Colab)
-import sys, os, io, time, json, subprocess
+import sys, os, io, re, time, json, shutil, subprocess
 IN_COLAB = "google.colab" in sys.modules
 if IN_COLAB:
-    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "rdkit", "vina", "meeko", "pdbfixer", "openmm",
+    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "rdkit", "meeko", "pdbfixer", "openmm",
                     "py3Dmol", "prolif", "MDAnalysis", "scipy"], check=False)
+    # AutoDock Vina's Python package gets its own pip call, on purpose: it publishes wheels only up to
+    # Python 3.12, so on a newer runtime pip falls back to compiling it from source (which needs Boost
+    # and SWIG) and fails. `pip install a b c` installs *nothing* when one package fails, so keeping
+    # vina in the list above would take rdkit down with it. The import block below falls back to the
+    # official static binary when the package is unavailable.
+    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "vina"], check=False)
 
 import numpy as np
 import pandas as pd
@@ -55,8 +70,125 @@ import py3Dmol
 import pdbfixer
 import openmm.app as app
 from meeko import MoleculePreparation, PDBQTWriterLegacy, PDBQTMolecule, RDKitMolCreate, Polymer, ResidueChemTemplates
-from vina import Vina
-import vina
+
+# ---------------------------------------------------------------------------------------------------
+# AutoDock Vina, whichever way we can get it.
+#
+# Vina is C++ with Python bindings built through SWIG and Boost. The `vina` package on PyPI ships
+# pre-compiled wheels only for CPython 3.8-3.12, so the moment Colab moves to a newer Python the
+# import below fails. Rather than compile Boost in a classroom, we fall back to the *static binary*
+# the AutoDock team publishes with every release (one 4 MB file, no dependencies) and drive it
+# through a class that offers the same methods, so nothing else in this notebook changes.
+#
+# The two paths give identical numbers - the binary and the bindings are the same code - and the
+# fallback is a few seconds slower per docking run because the binary rebuilds its grid each time
+# instead of reusing the maps from compute_vina_maps().
+# ---------------------------------------------------------------------------------------------------
+VINA_TAG = "1.2.7"
+try:
+    import vina
+    from vina import Vina
+    VINA_ENGINE = f"vina {vina.__version__} (Python bindings)"
+except Exception as import_error:
+    VINA_BIN = os.path.abspath("vina")
+    if not os.path.exists(VINA_BIN):
+        import urllib.request
+        url = (f"https://github.com/ccsb-scripps/AutoDock-Vina/releases/download/"
+               f"v{VINA_TAG}/vina_{VINA_TAG}_linux_x86_64")
+        print(f"vina bindings unavailable on Python {sys.version_info.major}.{sys.version_info.minor}"
+              f" ({type(import_error).__name__}); downloading the static binary instead")
+        urllib.request.urlretrieve(url, VINA_BIN)
+        os.chmod(VINA_BIN, 0o755)
+
+    def _vina_terms(text):
+        """The five energies Vina prints for --score_only / --local_only, in the API's column order."""
+        def value(label):
+            m = re.search(re.escape(label) + r"[^:]*:\s*(-?\d+\.?\d*)", text)
+            if m is None:
+                raise RuntimeError(f"unexpected Vina output:\n{text[-800:]}")
+            return float(m.group(1))
+        return np.around([value("Estimated Free Energy of Binding"), value("(1) Final Intermolecular Energy"),
+                          0.0, 0.0, 0.0, value("(2) Final Total Internal Energy"),
+                          value("(3) Torsional Free Energy"), value("(4) Unbound System's Energy")], 3)
+
+    def _vina_models(pdbqt_text):
+        models, current = [], []
+        for line in pdbqt_text.splitlines(keepends=True):
+            current.append(line)
+            if line.startswith("ENDMDL"):
+                models.append("".join(current)); current = []
+        return models or ["".join(current)]
+
+    class Vina:
+        """The part of the vina Python API this notebook uses, backed by the command-line binary."""
+
+        def __init__(self, sf_name="vina", cpu=0, seed=0, no_refine=False, verbosity=1):
+            self._sf, self._cpu, self._seed = sf_name, cpu, seed
+            self._receptor = self._ligand = self._center = self._box = None
+            self._local_out = self._models = None
+
+        def set_receptor(self, rigid_pdbqt_filename=None, flex_pdbqt_filename=None):
+            self._receptor = rigid_pdbqt_filename
+
+        def set_ligand_from_file(self, pdbqt_filename):
+            self._ligand = pdbqt_filename
+
+        def set_ligand_from_string(self, pdbqt_string):
+            self._ligand = "_vina_ligand.pdbqt"
+            with open(self._ligand, "w") as f:
+                f.write(pdbqt_string if isinstance(pdbqt_string, str) else "".join(pdbqt_string))
+
+        def compute_vina_maps(self, center, box_size, spacing=0.375, force_even_voxels=False):
+            self._center = [float(c) for c in center]        # the binary builds its own grid per run
+            self._box = [float(b) for b in box_size]
+
+        def _run(self, extra, out=None):
+            cmd = [VINA_BIN, "--receptor", self._receptor, "--ligand", self._ligand,
+                   "--scoring", self._sf, "--seed", str(self._seed), "--cpu", str(self._cpu)]
+            if self._center is not None:
+                cmd += ["--center_x", str(self._center[0]), "--center_y", str(self._center[1]),
+                        "--center_z", str(self._center[2]), "--size_x", str(self._box[0]),
+                        "--size_y", str(self._box[1]), "--size_z", str(self._box[2])]
+            if out is not None:
+                cmd += ["--out", out]
+            done = subprocess.run(cmd + extra, capture_output=True, text=True)
+            if done.returncode != 0:
+                raise RuntimeError(f"vina failed:\n{(done.stderr or done.stdout)[-800:]}")
+            return done.stdout
+
+        def score(self, unbound_energy=None):
+            return _vina_terms(self._run(["--score_only"]))
+
+        def optimize(self, max_steps=0):
+            self._local_out = "_vina_local.pdbqt"
+            return _vina_terms(self._run(["--local_only"], out=self._local_out))
+
+        def write_pose(self, pdbqt_filename, remarks="", overwrite=False):
+            if os.path.exists(pdbqt_filename) and not overwrite:
+                raise RuntimeError(f"{pdbqt_filename} already exists; pass overwrite=True")
+            shutil.copyfile(self._local_out, pdbqt_filename)
+
+        def dock(self, exhaustiveness=8, n_poses=20, min_rmsd=1.0, max_evals=0):
+            out = "_vina_poses.pdbqt"
+            self._run(["--exhaustiveness", str(exhaustiveness), "--num_modes", str(n_poses),
+                       "--min_rmsd", str(min_rmsd), "--max_evals", str(max_evals)], out=out)
+            self._models = _vina_models(open(out).read())
+
+        def poses(self, n_poses=9, energy_range=3.0, coordinates_only=False,
+                  remove_nonpolar_hydrogens=True):
+            return "".join(self._models[:n_poses])
+
+        def energies(self, n_poses=9, energy_range=3.0):
+            rows = []
+            for model in self._models[:n_poses]:
+                def remark(name):
+                    return float(re.search(rf"REMARK {name}:\s*(-?\d+\.?\d*)", model).group(1))
+                total, inter, intra = remark("VINA RESULT"), remark("INTER"), remark("INTRA")
+                unbound = remark("UNBOUND")
+                rows.append([total, inter, intra, total - inter - intra + unbound, unbound])
+            return np.around(rows, 3)
+
+    VINA_ENGINE = f"AutoDock Vina {VINA_TAG} (static binary)"
 
 REPO_RAW = "https://raw.githubusercontent.com/AxelRolov/chemoinformatics_tutorials/main"
 def fetch(filename, subdir="data"):
@@ -83,7 +215,7 @@ def get_pdb(pdb_id):
     print(f"{pdb_id}: {len(text.splitlines())} lines from {source}")
     return path
 
-print("Vina", vina.__version__, "| RDKit", Chem.rdBase.rdkitVersion, "| CPUs:", os.cpu_count())
+print(VINA_ENGINE, "| RDKit", Chem.rdBase.rdkitVersion, "| CPUs:", os.cpu_count())
 
 # %% [markdown]
 """

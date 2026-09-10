@@ -232,6 +232,8 @@ notebooks/*.xtc
 notebooks/agent_outputs/
 notebooks/frame_*.pdb
 notebooks/*.pdbqt
+# the AutoDock Vina static binary, downloaded by session 09 when the Python bindings have no wheel
+notebooks/vina
 notebooks/*.xml
 notebooks/*.chk
 notebooks/lig_frame_*.pdb

@@ -37,8 +37,8 @@ introductory chemoinformatics course usually states.
 | 07 | 90 min (RL ≈ 3 min, GA ≈ 2 min) | **yes** | no | 02, 06 |
 | 08 | 90 min | no | **yes** (DeepSeek key) | 05 |
 | 09 | 100 min (Vina: redocking ≈ 30 s, seed table ≈ 1 min, mini screen ≈ 4 min — CPU only) | no | no | 02, 03 |
-| 10 | 90 min (MD cell ≈ 2 min CPU / 10 s GPU) | **yes** | no | 01–02 |
-| 11 | 120 min (GPU: ≈ 8 min of simulation; CPU: ≈ 10 min token run + precomputed trajectory) | **yes** | no | 09, 10 |
+| 10 | 100 min (box building instant; MD ≈ 1.5 min CPU / 10 s GPU; the movies and widgets need a live Colab kernel) | **yes** | no | 01–02 |
+| 11 | 120 min (loop building 1–2 min, vacuum relaxation 20 s; GPU: ≈ 8 min of simulation; CPU: ≈ 7 min token run + precomputed trajectory) | **yes** | no | 09, 10 |
 
 Sessions 04 → 05 → 08 form a chain through the EGFR dataset; `data/EGFR_curated.csv` is committed so a student who
 missed session 04 can still do 05 and 08 (session 09 also draws its screening set from it). Sessions 09 → 10 → 11
@@ -129,6 +129,21 @@ notebooks. nbformat 4.5+ writes a random per-cell `id` on every save, so the bui
 deterministic ids derived from each cell's content (`assign_stable_ids`). Without that, the notebooks would
 differ on every rebuild and the "in sync with `src_nb`" check in CI could never pass. Keep that property if
 you change the build.
+
+`build.py --execute` runs the notebooks **headless** (no front-end). Sessions 10 and 11 use `ipywidgets.interact`
+for their interactive plots and viewers, and a matplotlib figure drawn inside an `interact` callback makes nbclient
+wait for its whole timeout even though the kernel has finished. So `execute()` injects a first cell into the
+*throwaway* executed copy that replaces `ipywidgets.interact` by a function calling the callback once with mid-range
+arguments (`HEADLESS_PRELUDE`). The committed notebooks are untouched; in Colab the widgets behave normally. If you add
+an `interact` to another notebook, nothing else is needed.
+
+**Session 11 relaxes PDBFixer's loops before solvation** (its section 2, step 5). PDBFixer builds the three missing
+loops of 4WKQ by a short stochastic simulation, and in about half of the runs the result contained a clash — a strained
+proline, or a loop end placed on top of a crystal atom — that 100 minimisation steps could not remove, so the
+restrained-NVT stage died with *"Particle coordinate is NaN"*. The notebook now (a) builds the loops with a fixed seed,
+so every student gets the same system (~45 000 atoms, 13 200 waters), and (b) minimises the protein alone in vacuum
+with the crystal heavy atoms restrained before adding water. That takes 20 s and has made the CPU protocol reliable in
+every test run since. Keep both if you touch the preparation.
 
 Conventions used in the sources:
 - markdown cells are triple-quoted strings after `# %% [markdown]`;

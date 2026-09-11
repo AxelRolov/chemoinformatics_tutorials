@@ -11,10 +11,17 @@
 > to current library versions, ports it to run start-to-finish in Google Colab, and adds exercises and connective
 > text; the assembly and revision were done with **Claude** (Anthropic) and then reviewed.
 
-> ⚡ **Tip.** This notebook runs on CPU, but the simulation of a ~50 000-atom system is ~50× faster on a GPU: in Colab
+> ⚡ **Tip.** This notebook runs on CPU, but the simulation of a ~45 000-atom system is ~50× faster on a GPU: in Colab
 > choose *Runtime → Change runtime type → T4 GPU* before you start. On CPU the notebook shrinks its own run to a few
 > picoseconds and analyses a **100 ps trajectory of the same system computed in advance** — you lose nothing of the
-> analysis.
+> analysis, and you still get the movies.
+
+**What we are going to do, in one paragraph.** Session 09 left gefitinib sitting in the pocket of EGFR as a single,
+frozen picture. Today we let that picture move. That needs five preparations — close the gaps in the protein chain,
+extract the ligand, teach the force field what gefitinib is, put everything in water, warm it up gently — and then a
+simulation of 100 ps, which we **watch as a movie** and then **measure**: did the ligand stay? which contacts held?
+does the protein move where the crystal says it should? Every step has a picture, and the code is the same OpenMM and
+MDAnalysis you used on the dipeptide in session 10 — just with a bigger box.
 
 **Learning goals.** After this session you will be able to
 - explain why a docked pose is a hypothesis that MD can test, and what MD adds (flexibility, water, time);
@@ -39,7 +46,7 @@ import sys, os, io, time, subprocess
 IN_COLAB = "google.colab" in sys.modules
 if IN_COLAB:
     subprocess.run([sys.executable, "-m", "pip", "install", "-q", "rdkit", "openmm", "pdbfixer", "MDAnalysis",
-                    "py3Dmol", "prolif", "openbabel-wheel", "requests"], check=False)
+                    "py3Dmol", "prolif", "openbabel-wheel", "requests", "ipywidgets"], check=False)
 
 from openbabel import openbabel as ob, pybel        # Open Babel must be imported before other SWIG libraries (e.g. vina)
 ob.obErrorLog.SetOutputLevel(0)
@@ -63,6 +70,7 @@ from openmm import unit
 import MDAnalysis as mda
 from MDAnalysis.analysis import rms, align
 import prolif as plf
+from ipywidgets import interact
 
 REPO_RAW = "https://raw.githubusercontent.com/AxelRolov/chemoinformatics_tutorials/main"
 def fetch(filename, subdir="data"):
@@ -115,8 +123,8 @@ The workflow is the seven-step one of Lecture 4. Session 10 did it for a peptide
 |---|---|---|
 | structure | shipped, ready | PDB entry 4WKQ: gaps to close, modified residue, ligand to extract |
 | force field | AMBER ff14SB | ff14SB for the protein **+ GAFF 2.11 for gefitinib** |
-| system | 749 waters, 2 269 atoms | 13 000–18 000 waters and ions, 40 000–60 000 atoms (it depends on how the rebuilt loops fall) |
-| equilibration | none | minimisation → restrained NVT → NPT |
+| system | 866 waters, 2 620 atoms | ~13 200 waters + 80 ions, ~45 000 atoms |
+| equilibration | minimisation only | minimisation → restrained NVT → NPT |
 | production | 20–200 ps | 2 ps (CPU) / 100 ps (GPU), plus the same 100 ps run computed in advance |
 | analysis | RMSD, Ramachandran | RMSD protein & ligand, RMSF vs B-factors, hinge H-bond, interaction persistence |
 """
@@ -124,6 +132,35 @@ The workflow is the seven-step one of Lecture 4. Session 10 did it for a peptide
 # %% [markdown]
 """
 ## 2. Prepare the protein — for MD this time
+
+### Step 1 · Get the crystal structure, and look at what is in it
+
+PDB entry **4WKQ**: the EGFR kinase domain with gefitinib bound, at 1.85 Å resolution — the same file as session 09.
+The picture shows everything the file contains: the protein as a grey ribbon, **gefitinib in green** in the cleft
+between the two lobes, the crystallisation waters as small red dots, a buffer molecule (MES, orange) stuck to the
+surface, and one sodium ion (purple). The three residues drawn as thin white sticks are the ones that will matter today:
+**Met793** (the *hinge*, whose backbone N–H bonds to gefitinib), **Thr790** (the *gatekeeper*) and **Lys745** (the
+catalytic lysine). Everything that is not protein or gefitinib has to go before we simulate.
+"""
+
+# %%
+pdb_path = get_pdb("4WKQ")
+crystal_text = open(pdb_path).read()
+
+view = py3Dmol.view(width=650, height=430)
+view.addModel(crystal_text, "pdb")
+view.setStyle({"cartoon": {"color": "lightgray"}})
+view.setStyle({"resn": "IRE"}, {"stick": {"colorscheme": "greenCarbon", "radius": 0.25}})
+view.setStyle({"resn": "MES"}, {"stick": {"colorscheme": "orangeCarbon"}})
+view.setStyle({"resn": "HOH"}, {"sphere": {"radius": 0.3, "color": "red"}})
+view.setStyle({"resn": "NA"}, {"sphere": {"radius": 0.8, "color": "purple"}})
+view.addStyle({"resi": [745, 790, 793], "not": {"resn": "HOH"}}, {"stick": {"colorscheme": "whiteCarbon", "radius": 0.12}})
+view.addResLabels({"resi": [745, 790, 793]}, {"fontSize": 11, "backgroundOpacity": 0.6})
+view.zoomTo({"resn": "IRE"}); view.show()
+
+# %% [markdown]
+"""
+### Step 2 · Clean it — twice, to see why the gaps matter
 
 We reuse the PDBFixer recipe of session 09 with one difference: `build_loops=True`. In docking the receptor was a rigid
 set of atoms and gaps in the chain did not matter. In MD the chain is a **bonded** object: OpenMM connects consecutive
@@ -153,7 +190,7 @@ def prepare_receptor(pdb_path, out_path, ph=7.4, build_loops=False, verbose=True
     fixer.replaceNonstandardResidues()                # CSX -> CYS
     fixer.removeHeterogens(keepWater=False)           # ligand, buffer, ions, waters
     fixer.findMissingAtoms()
-    fixer.addMissingAtoms()                           # side chains (and loops, if requested)
+    fixer.addMissingAtoms(seed=1)                     # side chains (and loops, if requested; seed -> same loops every run)
     fixer.addMissingHydrogens(ph)
     with open(out_path, "w") as f:
         app.PDBFile.writeFile(fixer.topology, fixer.positions, f, keepIds=True)
@@ -162,7 +199,6 @@ def prepare_receptor(pdb_path, out_path, ph=7.4, build_loops=False, verbose=True
               "loops built:", [f"{len(v)} residues after chain position {k[1]}" for k, v in built] or "none")
     return fixer
 
-pdb_path = get_pdb("4WKQ")
 t0 = time.time()
 prepare_receptor(pdb_path, "protein_gaps.pdb", build_loops=False)
 fixer = prepare_receptor(pdb_path, "protein.pdb", build_loops=True)
@@ -170,8 +206,38 @@ print(f"({time.time() - t0:.0f} s — loop building is an MD refinement, slow on
 
 # %% [markdown]
 """
-327 residues instead of 297: the three loops (721–723, 747–751, 985–1006) are now present. To see *why* this was
-necessary, we can ask OpenMM for the bond energy of both versions of the protein in vacuum, with no ligand and no water:
+327 residues instead of 297: the three loops (721–723, 747–751, 985–1006) are now present.
+
+### Step 3 · See the difference
+
+Left: the protein as the crystallographer left it — three places where the ribbon simply stops, because those
+residues were too disordered to be seen in the electron density. Right: the same protein after PDBFixer, with the
+**rebuilt loops in orange**. The longest one, 22 residues, is a whole segment that had no experimental coordinates at
+all; PDBFixer placed it in a plausible but invented conformation. Keep that in mind when the analysis shows those
+residues moving a lot — they were never real to begin with.
+"""
+
+# %%
+LOOPS = {"resi": ["721-723", "747-751", "985-1006"]}
+view = py3Dmol.view(width=900, height=400, viewergrid=(1, 2))
+view.addModel(open("protein_gaps.pdb").read(), "pdb", viewer=(0, 0))
+view.setStyle({"cartoon": {"color": "lightgray"}}, viewer=(0, 0))
+view.addLabel("crystal: 297 residues, 3 gaps", {"position": {"x": 0, "y": 0, "z": 0}, "useScreen": True, "screenOffset": {"x": 10, "y": 10}, "fontSize": 13}, viewer=(0, 0))
+view.addModel(open("protein.pdb").read(), "pdb", viewer=(0, 1))
+view.setStyle({"cartoon": {"color": "lightgray"}}, viewer=(0, 1))
+view.addStyle(LOOPS, {"cartoon": {"color": "orange"}}, viewer=(0, 1))
+view.addLabel("PDBFixer: 327 residues, loops rebuilt (orange)", {"position": {"x": 0, "y": 0, "z": 0}, "useScreen": True, "screenOffset": {"x": 10, "y": 10}, "fontSize": 13}, viewer=(0, 1))
+view.zoomTo(); view.show()
+
+# %% [markdown]
+"""
+### Step 4 · Put a number on it
+
+Why not simply simulate the gapped protein? Because to OpenMM a chain is a *bonded* object: it connects consecutive
+residues with a peptide bond whether or not they are anywhere near each other. So we ask the force field for the
+**bond-stretching energy** of both versions, in vacuum, without ligand or water. A bond pulled across a 25 Å gap
+with a covalent spring constant stores a truly enormous energy — and would release it on the very first step of
+dynamics, tearing the protein apart.
 """
 
 # %%
@@ -191,8 +257,83 @@ for label in ["protein_gaps.pdb", "protein.pdb"]:
 """
 Almost three million kJ/mol in the bond term of the gapped protein — three "bonds" stretched across the gaps — against
 seventy thousand for the continuous chain. (The continuous chain's value is itself far above that of a relaxed protein,
-because PDBFixer's rebuilt loops and freshly placed hydrogens are not yet minimised; that is what minimisation is for.)
+because PDBFixer's rebuilt loops and freshly placed hydrogens are not yet minimised; that is the next step.)
 
+### Step 5 · Relax what we invented — before trusting it
+
+PDBFixer builds a missing loop by a quick simulation from a random start, and the result is a *guess*: sometimes a
+proline ring comes out strained, sometimes the last built residue lands almost on top of the first crystal residue.
+Such a spot carries a gigantic force, and if we simply add water and start the dynamics, that force launches an atom
+across the box on the first step and the simulation dies with the message every MD practitioner learns to dread:
+**`Particle coordinate is NaN`**. (We know, because it happened to this notebook in about half of its test runs before
+this step existed.)
+
+The cure is cheap and general: **minimise the protein alone, in vacuum, with the crystal atoms held in place** by
+springs, so that only the invented loops (and the hydrogens) are free to relax. The springs are a `CustomExternalForce`
+— a force we write ourselves as a formula — and we will meet the exact same object again in section 6. Watch three
+numbers: the largest force on any atom before and after, how far the loops moved, and how little the crystal atoms did.
+"""
+
+# %%
+BUILT = set(range(721, 724)) | set(range(747, 752)) | set(range(985, 1007))      # the residues PDBFixer invented
+
+def largest_force(topology, positions, system):
+    """The atom carrying the largest force, and that force (kJ/mol/nm): a quick check for clashes."""
+    ctx = mm.Context(system, mm.VerletIntegrator(1 * unit.femtosecond)); ctx.setPositions(positions)
+    F = np.linalg.norm(ctx.getState(getForces=True).getForces(asNumpy=True).value_in_unit(unit.kilojoule_per_mole / unit.nanometer), axis=1)
+    atom = list(topology.atoms())[int(F.argmax())]
+    return f"{F.max():,.0f} kJ/mol/nm on {atom.residue.name}{atom.residue.id} {atom.name}"
+
+def relax_built_loops(topology, positions, k=1000.0):
+    """Minimise in vacuum with every crystal heavy atom tied to its position by a spring of stiffness k."""
+    system = ff_protein.createSystem(topology, nonbondedMethod=app.NoCutoff)
+    springs = mm.CustomExternalForce("0.5*k*((x-x0)^2 + (y-y0)^2 + (z-z0)^2)")
+    springs.addGlobalParameter("k", k * unit.kilojoule_per_mole / unit.nanometer**2)
+    for name in ("x0", "y0", "z0"):
+        springs.addPerParticleParameter(name)
+    for atom in topology.atoms():
+        if atom.element.symbol != "H" and int(atom.residue.id) not in BUILT:
+            springs.addParticle(atom.index, positions[atom.index])
+    system.addForce(springs)
+    print("before:", largest_force(topology, positions, system))
+    ctx = mm.Context(system, mm.VerletIntegrator(1 * unit.femtosecond)); ctx.setPositions(positions)
+    mm.LocalEnergyMinimizer.minimize(ctx)                     # to convergence: a few seconds for 5000 atoms
+    relaxed = ctx.getState(getPositions=True).getPositions()
+    print("after: ", largest_force(topology, relaxed, system))
+    return relaxed
+
+t0 = time.time()
+built_protein = app.PDBFile("protein.pdb")
+relaxed_positions = relax_built_loops(built_protein.topology, built_protein.positions)
+with open("protein_relaxed.pdb", "w") as f:
+    app.PDBFile.writeFile(built_protein.topology, relaxed_positions, f, keepIds=True)
+
+moved = np.linalg.norm(np.array(relaxed_positions.value_in_unit(unit.angstrom)) - np.array(built_protein.positions.value_in_unit(unit.angstrom)), axis=1)
+is_built = np.array([int(a.residue.id) in BUILT for a in built_protein.topology.atoms()])
+is_heavy = np.array([a.element.symbol != "H" for a in built_protein.topology.atoms()])
+print(f"rebuilt loops moved {moved[is_built & is_heavy].mean():.2f} Å on average (max {moved[is_built & is_heavy].max():.1f}), "
+      f"crystal heavy atoms {moved[~is_built & is_heavy].mean():.2f} Å  ({time.time() - t0:.0f} s)")
+
+# %% [markdown]
+"""
+From an absurd 3 × 10²¹ kJ/mol/nm — two atoms of the built loop practically on top of each other — to under a hundred,
+in twenty seconds, while the crystal moved by a quarter of an ångström. Left: the loops as PDBFixer built them; right: after relaxation — the differences are local, a few residues
+that were in trouble. This is the structure we take forward. The general lesson outlives this notebook: **whenever a
+program invents coordinates for you, relax them and check the forces before you spend GPU hours on them.**
+"""
+
+# %%
+view = py3Dmol.view(width=900, height=380, viewergrid=(1, 2))
+for col, (fname, title) in enumerate([("protein.pdb", "loops as built by PDBFixer"), ("protein_relaxed.pdb", "after vacuum relaxation")]):
+    view.addModel(open(fname).read(), "pdb", viewer=(0, col))
+    view.setStyle({"cartoon": {"color": "lightgray", "opacity": 0.5}}, viewer=(0, col))
+    view.addStyle(LOOPS, {"stick": {"colorscheme": "orangeCarbon", "radius": 0.15}}, viewer=(0, col))
+    view.addLabel(title, {"position": {"x": 0, "y": 0, "z": 0}, "useScreen": True, "screenOffset": {"x": 10, "y": 10}, "fontSize": 13}, viewer=(0, col))
+    view.zoomTo({"resi": ["985-1006"]}, viewer=(0, col))
+view.show()
+
+# %% [markdown]
+"""
 ## 3. Prepare the ligand
 
 Two possible starting poses, both from session 09: the **crystal pose** (extracted from 4WKQ with correct bond orders,
@@ -226,6 +367,20 @@ print(f"ligand from the {LIGAND_START} pose: {ligand.GetNumAtoms()} atoms ({liga
       f"formal charge {Chem.GetFormalCharge(ligand)}")
 Chem.MolToMolFile(ligand, "ligand_start.sdf")
 Chem.MolFromSmiles(GEFITINIB)
+
+# %% [markdown]
+"""
+The same molecule twice: the flat 2D drawing above, and below the **crystal pose in 3D**, with hydrogens added and
+the atoms coloured by element (grey C, blue N, red O, green Cl, light green F). Rotate it. The quinazoline and the
+anilino ring are almost coplanar; the propoxy–morpholine tail curls away. This exact geometry is where the simulation
+will start.
+"""
+
+# %%
+view = py3Dmol.view(width=500, height=340)
+view.addModel(Chem.MolToMolBlock(ligand), "mol")
+view.setStyle({"stick": {"radius": 0.2}, "sphere": {"scale": 0.25}})
+view.zoomTo(); view.show()
 
 # %% [markdown]
 """
@@ -283,6 +438,44 @@ Look at the types: the quinazoline carbons and nitrogens are `ca`/`nb`, the anil
 next to N/O, `hc` on plain aliphatic carbon, `hn` on nitrogen). The charges make chemical sense: the nitrogens and
 oxygens are negative, the carbons bonded to them positive.
 
+### The two ingredients, on the molecule
+
+Left: every heavy atom labelled with its **GAFF type** — this is what the force field "sees" instead of elements.
+Right: the molecule coloured by **partial charge**, red for negative, blue for positive, white for neutral. Charges are
+the only parameters that are specific to *this* molecule; all the rest (bond lengths, angles, torsions, radii) comes
+from the type. The three most negative atoms should be the morpholine nitrogen and the ether oxygens; the aromatic
+carbons carrying substituents should be blue.
+"""
+
+# %%
+def mol_with_bfactor(mol, values):
+    """A PDB block of the molecule with `values` written in the B-factor column (a trick to colour atoms by any number)."""
+    lines = []
+    for line in Chem.MolToPDBBlock(mol).splitlines():
+        if line.startswith(("ATOM", "HETATM")):
+            idx = int(line[6:11]) - 1
+            line = line[:60] + f"{values[idx]:6.2f}" + line[66:]
+        lines.append(line)
+    return "\n".join(lines)
+
+view = py3Dmol.view(width=900, height=380, viewergrid=(1, 2))
+view.addModel(Chem.MolToMolBlock(ligand), "mol", viewer=(0, 0))
+view.setStyle({"stick": {"radius": 0.15, "color": "lightgray"}}, viewer=(0, 0))
+for atom, gaff_type in zip(ligand.GetAtoms(), types):
+    if atom.GetAtomicNum() > 1:
+        pos = ligand.GetConformer().GetAtomPosition(atom.GetIdx())
+        view.addLabel(gaff_type, {"position": {"x": pos.x, "y": pos.y, "z": pos.z}, "fontSize": 11, "backgroundColor": "white",
+                                  "backgroundOpacity": 0.7, "fontColor": "black", "borderThickness": 0}, viewer=(0, 0))
+view.zoomTo(viewer=(0, 0))
+view.addModel(mol_with_bfactor(ligand, charges), "pdb", viewer=(0, 1))
+view.setStyle({"stick": {"colorscheme": {"prop": "b", "gradient": "rwb", "min": 0.5, "max": -0.5}, "radius": 0.2},
+               "sphere": {"colorscheme": {"prop": "b", "gradient": "rwb", "min": 0.5, "max": -0.5}, "scale": 0.3}}, viewer=(0, 1))
+view.zoomTo(viewer=(0, 1))
+view.show()
+print("left: GAFF atom types | right: partial charge, red = negative (-0.5), blue = positive (+0.5)")
+
+# %% [markdown]
+"""
 Now the template. Atom names must be unique within the residue (we number by element), and every bond is listed.
 """
 
@@ -370,7 +563,7 @@ Protein and ligand are joined into one `Modeller`, then solvated. Two choices di
 
 # %%
 t0 = time.time()
-protein = app.PDBFile("protein.pdb")
+protein = app.PDBFile("protein_relaxed.pdb")                    # the loops we relaxed in section 2
 modeller = app.Modeller(protein.topology, protein.positions)
 modeller.add(lig_top, lig_pos)
 n_complex = modeller.topology.getNumAtoms()
@@ -380,6 +573,16 @@ print(f"complex: {n_complex} atoms | solvated: {modeller.topology.getNumAtoms()}
       f"{counts['HOH']} waters, {counts.get('NA', 0)} Na+, {counts.get('CL', 0)} Cl-  ({time.time() - t0:.0f} s)")
 with open("system_start.pdb", "w") as f:
     app.PDBFile.writeFile(modeller.topology, modeller.positions, f)
+
+# %% [markdown]
+"""
+### What the box looks like
+
+The whole system, about 45 000 atoms: the protein as a grey ribbon, gefitinib in green, the ~13 200 water molecules
+as a pale blue haze, and the 80 ions as spheres. The haze is not a cube — a rhombic dodecahedron looks like a box with the
+corners cut off — and it is *full*: this is liquid water at the right density, not a mist. Every one of those water
+molecules will be moved at every one of the 50 000 steps of the production run; that is where the computing time goes.
+"""
 
 # %%
 view = py3Dmol.view(width=600, height=420)
@@ -419,8 +622,7 @@ executes) and analyse the 100 ps trajectory computed in advance with this very c
 system = forcefield.createSystem(modeller.topology, nonbondedMethod=app.PME, nonbondedCutoff=1.0 * unit.nanometer,
                                  constraints=app.HBonds)
 
-# harmonic positional restraints on solute heavy atoms (not on the residues PDBFixer modelled)
-BUILT = set(range(721, 724)) | set(range(747, 752)) | set(range(985, 1007))
+# harmonic positional restraints on solute heavy atoms (not on the residues PDBFixer modelled: BUILT, from section 2)
 restraint = mm.CustomExternalForce("0.5*k_res*periodicdistance(x, y, z, x0, y0, z0)^2")
 restraint.addGlobalParameter("k_res", 1000.0 * unit.kilojoule_per_mole / unit.nanometer**2)
 for p in ("x0", "y0", "z0"):
@@ -443,6 +645,44 @@ simulation.context.setPositions(modeller.positions)
 print(f"{n_restrained} restrained heavy atoms | forces: {[f.__class__.__name__ for f in system.getForces()]}")
 print("platform:", simulation.context.getPlatform().getName())
 
+# %% [markdown]
+"""
+### What the springs hold
+
+The restraints in a picture: every atom drawn as a **grey sphere** is tied to its starting position by a spring during
+the first equilibration stage — the whole protein and the ligand. The **orange** loops are not: they were invented by
+PDBFixer, and holding them in place would only preserve a guess. Water and ions (not drawn) are free from the start.
+The idea is that the *solvent* should adapt to the solute, not the other way round: water molecules placed by a
+program have to find their hydrogen-bond partners, and while they do so we do not want the protein to be pushed
+around by a still-unphysical environment.
+"""
+
+# %%
+solute_heavy = {"not": {"or": [{"resn": ["HOH", "NA", "CL"]}, {"elem": "H"}]}}        # protein + ligand, heavy atoms only
+view = py3Dmol.view(width=600, height=420)
+view.addModel(open("system_start.pdb").read(), "pdb")
+view.setStyle({}, {})                                                                    # hide everything first
+view.setStyle(solute_heavy, {"sphere": {"radius": 0.6, "color": "gray", "opacity": 0.55}})
+view.setStyle({"resi": ["721-723", "747-751", "985-1006"], "not": {"elem": "H"}}, {"sphere": {"radius": 0.6, "color": "orange", "opacity": 0.9}})
+view.setStyle({"resn": "LIG", "not": {"elem": "H"}}, {"sphere": {"radius": 0.7, "color": "green"}})
+view.zoomTo({"not": {"resn": ["HOH", "NA", "CL"]}}); view.show()
+print(f"grey: {n_restrained} restrained heavy atoms (protein + ligand, ligand in green) | orange: the rebuilt loops, left free")
+
+# %% [markdown]
+"""
+### Stage 1 · Minimise
+
+The same idea as in session 10, on a system seventeen times larger: slide every atom downhill until the worst
+contacts are gone — now mostly between the water molecules a program dropped in and the protein surface. Because the
+protein was already relaxed in section 2, the starting energy is *negative* from the outset; minimisation still lowers
+it by another ~300 000 kJ/mol as the water settles. (Without the section-2 step this number would start in the
+millions or billions — and the run would often not survive the next cell.)
+
+The cell also writes `complex_minimised.pdb`: the protein and ligand **without the water**, at the minimised
+positions. That file is the topology for the analysis — the trajectory we save will contain only those atoms, because
+17 700 water molecules at every frame is a lot of disk for something we will not look at.
+"""
+
 # %%
 N_MIN, N_EQ, N_PROD = (500, 2500, 50_000) if GPU else (100, 100, 1000)     # GPU: 5 ps + 5 ps + 100 ps ; CPU: token run
 print(f"this run: {N_MIN} minimisation steps, 2 × {N_EQ * 0.002:.1f} ps equilibration, {N_PROD * 0.002:.0f} ps production")
@@ -459,6 +699,26 @@ solute = app.Modeller(modeller.topology, simulation.context.getState(getPosition
 solute.delete([r for r in solute.topology.residues() if r.name in ("HOH", "NA", "CL")])
 with open("complex_minimised.pdb", "w") as f:
     app.PDBFile.writeFile(solute.topology, solute.positions, f, keepIds=True)      # keep the crystal residue numbers
+
+# %% [markdown]
+"""
+### Stages 2–4 · Warm up with the springs on, release, produce
+
+Three runs of the *same* simulation object, with two switches flipped between them:
+
+- **Restrained NVT.** The barostat is switched off (`setFrequency(0)`: never attempt a volume move) and the springs are on
+  (`k_res = 1000` kJ/mol/nm²). Velocities are drawn for 300 K and the water is allowed to settle around a protein that
+  cannot move. `reinitialize(preserveState=True)` is the incantation needed after changing a force's setting — OpenMM
+  has to rebuild its internal machinery, and we ask it to keep the current positions and velocities while it does.
+- **NPT.** Springs off (`k_res = 0`), barostat on (`setFrequency(25)`: try a volume move every 25 steps). The box finds
+  its density with a free protein.
+- **Production.** A `DCDReporter` is added — only now, so that the equilibration frames never enter the analysis —
+  saving every 1000 steps (2 ps). Two details: `atomSubset=solute_idx` writes protein and ligand only, and
+  `enforcePeriodicBox=False` stops OpenMM from wrapping molecules back into the box, which would split the protein
+  across the periodic boundary in the picture.
+
+The printed speed, in ns/day, is the number to compare between CPU and GPU: one to two orders of magnitude.
+"""
 
 # %%
 simulation.reporters.append(app.StateDataReporter("md_log.csv", 50, step=True, time=True, potentialEnergy=True,
@@ -500,9 +760,10 @@ plt.tight_layout(); plt.show()
 ### Which trajectory?
 
 If you ran on a GPU you have 100 ps of your own (50 frames). On CPU you have 2 ps — enough to check that the code
-works, not enough to say anything. So we also load the **100 ps trajectory computed in advance** with exactly the code
-above (crystal start, same force field; 5 ps restrained NVT, 5 ps NPT and a further 80 ps of NPT before production;
-50 frames every 2 ps; two CPU cores, one night), so that everybody analyses the same thing. `TRAJ` decides which one the cells below use — your own run if it
+works, not enough to say anything. So we also load the **100 ps trajectory computed in advance** with the same protocol
+(crystal start, same force field, loops built by a lucky seed before the relaxation step of section 2 existed; 5 ps
+restrained NVT, 5 ps NPT and a further 80 ps of NPT before production; 50 frames every 2 ps; two CPU cores, one
+night), so that everybody analyses the same thing. `TRAJ` decides which one the cells below use — your own run if it
 has at least 25 frames, the precomputed one otherwise.
 """
 
@@ -519,6 +780,75 @@ u.select_atoms("protein").guess_bonds()            # the PDB carries CONECT reco
 print(f"using the {TRAJ} trajectory: {u.trajectory.n_frames} frames, {u.atoms.n_atoms} atoms, "
       f"{u.select_atoms('protein').n_residues} protein residues, ligand atoms: {u.select_atoms('resname LIG').n_atoms}")
 dt_frame = 2.0    # ps between frames
+
+# %% [markdown]
+"""
+### Hold the camera on the protein
+
+As in session 10: before filming or measuring anything, every frame is superposed on the reference structure — here
+on the protein's **Cα atoms**, so that the protein stays put in the picture and only its internal motion, and the
+ligand's motion *relative to it*, remain. `in_memory=True` makes the alignment permanent for the rest of the notebook.
+"""
+
+# %%
+align.AlignTraj(u, ref, select="protein and name CA", in_memory=True).run()
+lig_ag = u.select_atoms("resname LIG")
+u.trajectory[0]
+pocket_ag = u.select_atoms("byres (protein and around 6 group lig)", lig=lig_ag)       # residues within 6 Å at the start
+print(f"aligned {u.trajectory.n_frames} frames on the protein Cα | pocket: {pocket_ag.n_residues} residues within 6 Å of the ligand")
+
+def write_movie(atoms, filename, frames):
+    """Write an AtomGroup at the given frames as a multi-model PDB, for py3Dmol animation."""
+    with mda.Writer(filename, atoms.n_atoms, multiframe=True) as w:
+        for fr in frames:
+            u.trajectory[fr]
+            w.write(atoms)
+    return open(filename).read()
+
+# %% [markdown]
+"""
+### Movie 1 · The ligand in its pocket
+
+Gefitinib (green) and the 35 residues within 6 Å of it, all 50 frames, 2 ps apart — 100 ps of the complex's life.
+**Press ▶.** The pocket residues are drawn as thin sticks so that the ligand stays visible; Met793, the hinge, is in
+white so you can watch the hydrogen bond.
+
+What to look for: the quinazoline core barely moves — it is wedged between the two lobes; the anilino ring rocks in the
+back pocket; the morpholine tail, which sticks out into the solvent, swings much more. Side chains around the ligand
+flicker constantly. Nothing leaves. That "nothing leaves" is the first result of the session, and the RMSD plot below
+turns it into a number.
+"""
+
+# %%
+movie_pocket = write_movie(lig_ag + pocket_ag, "movie_pocket.pdb", range(u.trajectory.n_frames))
+view = py3Dmol.view(width=650, height=450)
+view.addModelsAsFrames(movie_pocket, "pdb")
+view.setStyle({"stick": {"radius": 0.1, "colorscheme": "grayCarbon"}})
+view.setStyle({"resi": 793}, {"stick": {"radius": 0.18, "colorscheme": "whiteCarbon"}})
+view.setStyle({"resn": "LIG"}, {"stick": {"radius": 0.25, "colorscheme": "greenCarbon"}})
+view.animate({"loop": "backAndForth", "interval": 120})
+view.zoomTo({"resn": "LIG"}); view.show()
+
+# %% [markdown]
+"""
+### Movie 2 · The whole protein breathing
+
+The same 100 ps seen from far away: the protein backbone as a ribbon (25 of the 50 frames, to keep the file small),
+the ligand in green, the **rebuilt loops in orange**. The body of the protein trembles; the orange loops flap. That
+is not a bug — it is exactly what you would expect from residues that had no experimental position and were placed
+by a program — and the RMSF analysis below quantifies it.
+"""
+
+# %%
+backbone_ag = u.select_atoms("protein and (name N or name CA or name C or name O)") + lig_ag
+movie_protein = write_movie(backbone_ag, "movie_protein.pdb", np.linspace(0, u.trajectory.n_frames - 1, 25).astype(int))
+view = py3Dmol.view(width=650, height=450)
+view.addModelsAsFrames(movie_protein, "pdb")
+view.setStyle({"cartoon": {"color": "lightgray"}})
+view.addStyle({"resi": ["721-723", "747-751", "985-1006"]}, {"cartoon": {"color": "orange"}})
+view.setStyle({"resn": "LIG"}, {"stick": {"radius": 0.3, "colorscheme": "greenCarbon"}})
+view.animate({"loop": "backAndForth", "interval": 150})
+view.zoomTo(); view.show()
 
 # %% [markdown]
 """
@@ -542,6 +872,43 @@ print(rmsd.drop(columns="time (ps)").describe().loc[["mean", "max"]].round(2))
 
 # %% [markdown]
 """
+### Choose your own atoms
+
+The three curves above are three choices of atoms. The widget lets you make others: the **pocket residues** (are the
+residues touching the ligand as stable as the ligand itself?), a **single residue** of your choice (type its number —
+try 793 for the hinge, 1000 for the middle of the rebuilt loop, 790 for the gatekeeper), or the **ligand's core only**
+(quinazoline + anilino ring, without the floppy tail — does the core sit still while the tail moves?). The reference
+frame is adjustable too. Every curve is computed after superposition on the protein backbone, so a residue's RMSD
+means "how far did it move relative to the protein", not "how far did the protein carry it".
+"""
+
+# %%
+core_names = [lig_names[a.GetIdx()] for a in ligand.GetAtoms() if a.GetAtomicNum() > 1 and a.IsInRing() and a.GetIsAromatic()]
+RMSD_CHOICES = {
+    "ligand, all heavy atoms": "resname LIG and not name H*",
+    "ligand, aromatic core only": "resname LIG and name " + " ".join(core_names),
+    "protein backbone": "protein and backbone",
+    "pocket residues (backbone)": "protein and backbone and byres around 6 group lig",
+    "rebuilt loops (backbone)": "protein and backbone and (resid 721:723 or resid 747:751 or resid 985:1006)",
+    "one residue (heavy atoms) - use the box below": None,
+}
+def show_rmsd(what, residue=793, reference_frame=0):
+    sel = RMSD_CHOICES[what] or f"protein and resid {residue} and not name H*"
+    group = u.select_atoms(sel, lig=lig_ag)
+    if group.n_atoms < 3:
+        print(f"selection '{sel}' has {group.n_atoms} atoms - nothing to measure"); return
+    R = rms.RMSD(u, u, select="protein and backbone", groupselections=[sel], ref_frame=reference_frame).run()   # reference = a frame of the trajectory
+    y = R.results.rmsd[:, 3]
+    plt.figure(figsize=(8, 3.2))
+    plt.plot(rmsd["time (ps)"], y, label=f"{what}" + (f" {residue}" if RMSD_CHOICES[what] is None else ""))
+    plt.axvline(reference_frame * dt_frame, c="r", ls="--", label=f"reference = frame {reference_frame}"); plt.axhline(2, c="gray", ls=":")
+    plt.xlabel("time (ps)"); plt.ylabel("RMSD (Å), protein-backbone frame"); plt.legend(); plt.show()
+    print(f"{group.n_atoms} atoms | mean {y.mean():.2f} Å | max {y.max():.2f} Å")
+
+interact(show_rmsd, what=list(RMSD_CHOICES), residue=(700, 1020, 1), reference_frame=(0, u.trajectory.n_frames - 1, 1));
+
+# %% [markdown]
+"""
 The ligand stays within 1–2 Å of its crystal pose for the whole trajectory (mean 1.4 Å, never above 2 Å) — the same
 size as the protein's own backbone motion (1.8 Å) — while the rebuilt loops, which had no experimental coordinates,
 have drifted 4–5 Å. A ligand that left the pocket would show up as a steadily rising line. Remember the caveat from
@@ -556,8 +923,7 @@ So we can compare our 100 ps of simulation with the experiment residue by residu
 """
 
 # %%
-aligner = align.AlignTraj(u, ref, select="protein and name CA", in_memory=True).run()
-ca = u.select_atoms("protein and name CA")
+ca = u.select_atoms("protein and name CA")                     # the trajectory is already aligned on these atoms
 rmsf = rms.RMSF(ca).run().results.rmsf
 
 bfac = {}
@@ -600,6 +966,49 @@ print("blue: rigid — red: mobile (colour = Cα RMSF of the residue)")
 
 # %% [markdown]
 """
+### The hinge hydrogen bond — first a picture
+
+Session 09 identified the defining interaction of every quinazoline kinase inhibitor: the backbone **N–H of Met793**,
+in the hinge between the two lobes, donating a hydrogen bond to a **nitrogen of the quinazoline ring**. Before
+measuring it over time, look at it in the first frame: the ligand in green, Met793 in white, and the N–H···N contact
+drawn as a dashed line with its length. In the crystal this distance is 2.98 Å.
+"""
+
+# %%
+aromatic_N = [lig_names[a.GetIdx()] for a in ligand.GetAtoms() if a.GetSymbol() == "N" and a.GetIsAromatic()]
+acceptors = u.select_atoms("resname LIG and name " + " ".join(aromatic_N))
+donor_N, donor_H = u.select_atoms("resid 793 and name N"), u.select_atoms("resid 793 and name H")
+
+def hinge_geometry(frame):
+    """Distance N(Met793)···N(ligand, closest aromatic N) and the N-H···N angle at one frame."""
+    u.trajectory[frame]
+    d = np.linalg.norm(acceptors.positions - donor_N.positions[0], axis=1); k = int(d.argmin())
+    v1 = donor_N.positions[0] - donor_H.positions[0]; v2 = acceptors.positions[k] - donor_H.positions[0]
+    ang = np.degrees(np.arccos(np.dot(v1, v2) / np.linalg.norm(v1) / np.linalg.norm(v2)))
+    return float(d[k]), float(ang), acceptors[k]
+
+def hinge_view(frame, width=600, height=400):
+    d, ang, acc = hinge_geometry(frame)
+    (lig_ag + pocket_ag).write("_pocket_frame.pdb")
+    v = py3Dmol.view(width=width, height=height)
+    v.addModel(open("_pocket_frame.pdb").read(), "pdb")
+    v.setStyle({"stick": {"radius": 0.1, "colorscheme": "grayCarbon"}})
+    v.setStyle({"resi": 793}, {"stick": {"radius": 0.2, "colorscheme": "whiteCarbon"}})
+    v.setStyle({"resn": "LIG"}, {"stick": {"radius": 0.22, "colorscheme": "greenCarbon"}})
+    p1, p2 = donor_H.positions[0], acc.position
+    v.addCylinder({"start": {"x": float(p1[0]), "y": float(p1[1]), "z": float(p1[2])}, "end": {"x": float(p2[0]), "y": float(p2[1]), "z": float(p2[2])},
+                   "radius": 0.07, "dashed": True, "color": "magenta"})
+    mid = (donor_N.positions[0] + acc.position) / 2
+    v.addLabel(f"{d:.2f} Å", {"position": {"x": float(mid[0]), "y": float(mid[1]), "z": float(mid[2])}, "fontSize": 13, "backgroundColor": "magenta"})
+    v.addResLabels({"resi": 793}, {"fontSize": 11, "backgroundOpacity": 0.6})
+    v.zoomTo({"resn": "LIG"}); v.show()
+    return d, ang
+
+d0, a0 = hinge_view(0)
+print(f"frame 0: N(Met793)···N(quinazoline) = {d0:.2f} Å, N–H···N angle = {a0:.0f}°   (crystal: 2.98 Å)")
+
+# %% [markdown]
+"""
 ### The hinge hydrogen bond over time
 
 Session 09 identified the defining interaction: Met793's backbone N–H donating a hydrogen bond to a quinazoline
@@ -609,19 +1018,9 @@ TeachOpenCADD T020 does for its EGFR ligand.
 """
 
 # %%
-aromatic_N = [lig_names[a.GetIdx()] for a in ligand.GetAtoms() if a.GetSymbol() == "N" and a.GetIsAromatic()]
-acceptors = u.select_atoms("resname LIG and name " + " ".join(aromatic_N))
-donor_N, donor_H = u.select_atoms("resid 793 and name N"), u.select_atoms("resid 793 and name H")
 print("quinazoline nitrogens:", aromatic_N, "| donor: Met793 N-H")
-
-dist, angle = [], []
-for ts in u.trajectory:
-    d = np.linalg.norm(acceptors.positions - donor_N.positions[0], axis=1)
-    k = d.argmin()
-    v1 = donor_N.positions[0] - donor_H.positions[0]; v2 = acceptors.positions[k] - donor_H.positions[0]
-    angle.append(np.degrees(np.arccos(np.dot(v1, v2) / np.linalg.norm(v1) / np.linalg.norm(v2))))
-    dist.append(d[k])
-dist, angle = np.array(dist), np.array(angle)
+geom = np.array([hinge_geometry(fr)[:2] for fr in range(u.trajectory.n_frames)])
+dist, angle = geom[:, 0], geom[:, 1]
 t = np.arange(len(dist)) * dt_frame
 
 fig, axes = plt.subplots(1, 2, figsize=(11, 3.3))
@@ -645,7 +1044,33 @@ observation — and three candidate explanations you can test: the ligand's **ch
 under-polarise the ring nitrogen — Exercise 3), the **starting model** (the P-loop above the pocket was rebuilt from
 nothing), and **time** (100 ps starting from a minimised crystal is not an equilibrated ensemble). This is what a
 simulation is for: it turns "the pose looks fine" into a specific question.
+"""
 
+# %% [markdown]
+"""
+### Any frame, on demand
+
+Movie 1 showed everything at once. This slider stops at one frame: the pocket at that moment with the hinge distance
+drawn, and, underneath, the ligand RMSD curve with the frame marked. Look at the frames where the RMSD peaks and at
+the frames where the hinge distance is longest — are they the same frames?
+"""
+
+# %%
+lig_rmsd = rmsd["ligand (heavy atoms)"].values
+def explore(frame):
+    fig, axes = plt.subplots(1, 2, figsize=(10, 2.8))
+    axes[0].plot(rmsd["time (ps)"], lig_rmsd, c="green"); axes[0].scatter(frame * dt_frame, lig_rmsd[frame], c="red", s=80, zorder=3)
+    axes[0].set_xlabel("time (ps)"); axes[0].set_ylabel("ligand RMSD (Å)")
+    axes[1].plot(rmsd["time (ps)"], dist, c="magenta"); axes[1].scatter(frame * dt_frame, dist[frame], c="red", s=80, zorder=3)
+    axes[1].axhline(3.5, c="gray", ls=":"); axes[1].set_xlabel("time (ps)"); axes[1].set_ylabel("hinge N···N (Å)")
+    plt.tight_layout(); plt.show()
+    d, ang = hinge_view(frame, width=550, height=360)
+    print(f"frame {frame}  t = {frame * dt_frame:.0f} ps | ligand RMSD {lig_rmsd[frame]:.2f} Å | hinge N···N {d:.2f} Å, angle {ang:.0f}°")
+
+interact(explore, frame=(0, u.trajectory.n_frames - 1, 1));
+
+# %% [markdown]
+"""
 ### Interaction persistence with ProLIF
 
 The hinge bond is one interaction. ProLIF (session 09) computes the whole fingerprint **for every frame**; the fraction
@@ -673,10 +1098,14 @@ to Met793, the interaction every textbook names first, is only present in ~45 % 
 criterion — the same stretched contact we measured above. Contacts of the solvent-exposed tail (Val726, Leu844) come
 and go. Compare with the crystal-pose fingerprint of session 09: every interaction that was there is here, now with a
 frequency attached — and the frequencies do not rank them the way intuition would.
+"""
 
-### Look at it
+# %% [markdown]
+"""
+### One picture to keep
 
-Finally, the trajectory itself: the ligand in a few superposed frames, and the pocket residues.
+Finally, a summary picture: the ligand at five moments of the trajectory superposed (green = start … purple = end),
+with the pocket residues of the first frame as thin white sticks. This is the image that says "the pose survived".
 """
 
 # %%

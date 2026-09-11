@@ -89,11 +89,37 @@ def convert(src: Path) -> Path:
     return out
 
 
+HEADLESS_PRELUDE = """\
+# Injected by build.py --execute. No front-end is attached, so ipywidgets cannot be interacted with, and a
+# matplotlib figure drawn inside an interact() callback makes nbclient wait for its timeout. Replace interact
+# by a function that calls the callback once with mid-range arguments, so the cell runs and its code is tested.
+import ipywidgets as _ipw
+
+def _headless_interact(f=None, **kw):
+    def run(func):
+        args = {}
+        for k, v in kw.items():
+            if isinstance(v, tuple) and len(v) >= 2:
+                lo, hi = v[0], v[1]
+                args[k] = lo + (hi - lo) // 2 if isinstance(lo, int) and isinstance(hi, int) else (lo + hi) / 2
+            elif isinstance(v, (list, dict)):
+                args[k] = list(v)[0]
+            else:
+                args[k] = v
+        func(**args)
+        return func
+    return run(f) if f is not None else run
+
+_ipw.interact = _headless_interact
+"""
+
+
 def execute(nb_path: Path, timeout: int = 1800) -> tuple[bool, str]:
     """Execute a notebook copy with nbclient; return (ok, message). Never writes outputs to repo."""
     from nbclient import NotebookClient
 
     nb = nbformat.read(nb_path, as_version=4)
+    nb.cells.insert(0, nbformat.v4.new_code_cell(HEADLESS_PRELUDE))   # see HEADLESS_PRELUDE
     client = NotebookClient(
         nb,
         timeout=timeout,
@@ -109,7 +135,7 @@ def execute(nb_path: Path, timeout: int = 1800) -> tuple[bool, str]:
             continue
         for o in c.get("outputs", []):
             if o.get("output_type") == "error":
-                errors.append(f"cell {i}: {o.get('ename')}: {str(o.get('evalue'))[:300]}")
+                errors.append(f"cell {i - 1}: {o.get('ename')}: {str(o.get('evalue'))[:300]}")   # i-1: skip the prelude
     executed = nb_path.parent / f".executed_{nb_path.name}"
     nbformat.write(nb, executed)  # kept locally for inspection (git-ignored)
     msg = f"{nb_path.name}: {len(errors)} error(s) in {time.time() - t0:.0f}s"

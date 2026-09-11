@@ -11,14 +11,22 @@
 > to current library versions, ports it to run start-to-finish in Google Colab, and adds exercises and connective
 > text; the assembly and revision were done with **Claude** (Anthropic) and then reviewed.
 
-> ⚡ **Tip.** This notebook runs on CPU, but is ~20× faster with a GPU: in Colab choose
-> *Runtime → Change runtime type → T4 GPU* before you start.
+> ⚡ **Tip.** This notebook runs on CPU (the simulation takes about two minutes), but is ~20× faster with a GPU: in
+> Colab choose *Runtime → Change runtime type → T4 GPU* before you start, and the simulation becomes ten times longer
+> for the same wait.
+
+**What we are going to do, in one paragraph.** Until now a molecule was a *graph*: atoms and bonds, no shape. Today we
+give it a shape (section 1), learn how a computer scores a shape as "comfortable" or "strained" (section 2), and then
+let a small molecule *move* — we put a two-residue peptide in a box of water, apply Newton's laws to every atom, and
+record a movie of a few tens of picoseconds of its life (section 3). Then we **watch** the movie (section 4) and learn
+how to turn 300 000 numbers of trajectory into three plots that mean something (section 5).
 
 **Learning goals.** After this session you will be able to
-- generate and compare 3D **conformers** of a small molecule and explain why one SMILES corresponds to many geometries;
-- describe the terms of a molecular-mechanics **force field** and reproduce a torsion energy profile;
-- explain the ingredients of a **molecular dynamics** (MD) simulation: integrator, time step, thermostat, periodic box, solvent;
-- run a short MD simulation of a solvated peptide with **OpenMM** and analyse it with **MDAnalysis** (RMSD, Ramachandran plot);
+- generate 3D **conformers** of a small molecule and explain why one SMILES corresponds to many geometries;
+- say what a molecular-mechanics **force field** is (balls and springs, with a formula) and read a torsion energy profile;
+- explain, in plain words, the ingredients of a **molecular dynamics** (MD) simulation: time step, thermostat, barostat, periodic box, water;
+- build a solvated system, run a short MD simulation with **OpenMM**, and **watch it** as a movie;
+- analyse a trajectory with **MDAnalysis**: check that the run is healthy, measure how much the molecule moves (RMSD), and reduce its shape to two angles (the **Ramachandran plot**) — and understand *why* those two angles;
 - situate MD among the tools of computer-aided drug design (docking, binding free energies, 3D representations for ML).
 
 ---
@@ -35,7 +43,7 @@
 import sys, os, subprocess, time
 IN_COLAB = "google.colab" in sys.modules
 if IN_COLAB:
-    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "rdkit", "openmm", "MDAnalysis", "py3Dmol"], check=False)
+    subprocess.run([sys.executable, "-m", "pip", "install", "-q", "rdkit", "openmm", "MDAnalysis", "py3Dmol", "plotly", "ipywidgets"], check=False)
 
 import numpy as np
 import pandas as pd
@@ -47,8 +55,14 @@ IPythonConsole.ipython_useSVG = True
 import py3Dmol
 import openmm as mm
 import openmm.app as app
-from openmm import unit
+from openmm import unit, Vec3
 import MDAnalysis as mda
+from MDAnalysis.analysis import rms, align
+from MDAnalysis.analysis.dihedrals import Ramachandran
+import plotly.graph_objects as go
+from ipywidgets import interact
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning); warnings.filterwarnings("ignore", category=UserWarning)
 
 REPO_RAW = "https://raw.githubusercontent.com/AxelRolov/chemoinformatics_tutorials/main"
 def fetch(filename, subdir="data"):
@@ -78,10 +92,34 @@ coordinates that satisfy the distance constraints of the graph, then corrects to
 structures. We then relax each conformer with the **MMFF94** force field.
 """
 
+# %% [markdown]
+"""
+### Step 1 · The molecule
+
+Gefitinib again — the EGFR inhibitor of sessions 04–09. Count its rotatable bonds as you look at the drawing: the
+methoxy, the anilino link, the whole propoxy–morpholine tail. Eight of them, and each can sit at several angles. The
+2D drawing below is *one* molecule; the 3D question "what does it look like?" has hundreds of answers.
+"""
+
 # %%
 smiles = "COc1cc2ncnc(Nc3ccc(F)c(Cl)c3)c2cc1OCCCN1CCOCC1"     # gefitinib, an EGFR kinase inhibitor
 mol = Chem.MolFromSmiles(smiles)
 mol
+
+# %% [markdown]
+"""
+### Step 2 · Generate conformers
+
+Four things happen in this cell, in order:
+
+- `AddHs` — a 3D structure needs its hydrogens; the SMILES leaves them implicit.
+- `EmbedMultipleConfs` with **ETKDG** guesses 50 sets of 3D coordinates. `randomSeed=42` makes the guess
+  reproducible; `pruneRmsThresh=0.5` throws away any new conformer that is within 0.5 Å of one we already have, so
+  the 50 requests give fewer, genuinely different shapes.
+- `MMFFOptimizeMoleculeConfs` relaxes each guess with the MMFF94 force field (section 2 explains what that means) and
+  returns its energy in kcal/mol.
+- we subtract the lowest energy, so the best conformer is at 0 and every other number reads "this much worse".
+"""
 
 # %%
 molH = Chem.AddHs(mol)
@@ -97,21 +135,52 @@ energies = np.array([e for _, e in results])
 energies -= energies.min()
 print("relative MMFF energies (kcal/mol):", np.round(np.sort(energies)[:10], 2), "...")
 
+# %% [markdown]
+"""
+### Step 3 · The energy ladder
+
+A histogram of those relative energies. The useful yardstick is the thermal energy at room temperature,
+$k_BT \approx 0.6$ kcal/mol: conformers within one or two of those of the minimum are populated at 300 K, conformers
+10 kcal/mol up essentially never occur. Notice how spread out the ladder is — most of what ETKDG proposed is chemically
+possible but thermally irrelevant.
+"""
+
 # %%
 plt.figure(figsize=(5, 3))
 plt.hist(energies, bins=20)
 plt.xlabel("MMFF94 energy relative to the minimum (kcal/mol)"); plt.ylabel("conformers")
 plt.show()
 
+# %% [markdown]
+"""
+### Step 4 · How different are they, really?
+
+Energy does not tell you whether two conformers *look* different. For that we superpose each pair as well as possible
+(rotate and shift one onto the other) and measure the **RMSD** — the root-mean-square distance between matching heavy
+atoms. `GetBestRMS` does the superposition and also tries the symmetric atom orderings, so swapping the two equivalent
+arms of the morpholine does not count as a difference. A mean pairwise RMSD near 1.7 Å says the conformers are not
+small variations of one shape; the flexible tail lands in genuinely different places.
+"""
+
 # %%
 # How different are the conformers? Heavy-atom RMSD after optimal superposition
 heavy = Chem.RemoveHs(molH)
 n = heavy.GetNumConformers()
-rms = np.zeros((n, n))
+rmsd_matrix = np.zeros((n, n))
 for i in range(n):
     for j in range(i + 1, n):
-        rms[i, j] = rms[j, i] = rdMolAlign.GetBestRMS(heavy, heavy, prbId=i, refId=j)
-print(f"mean pairwise RMSD: {rms[np.triu_indices(n, 1)].mean():.2f} Å")
+        rmsd_matrix[i, j] = rmsd_matrix[j, i] = rdMolAlign.GetBestRMS(heavy, heavy, prbId=i, refId=j)
+print(f"mean pairwise RMSD: {rmsd_matrix[np.triu_indices(n, 1)].mean():.2f} Å")
+
+# %% [markdown]
+"""
+### Step 5 · Look at the five lowest
+
+The five lowest-energy conformers, each aligned onto the best one, drawn in five colours. Rotate the picture with the
+mouse. The rigid quinazoline–anilino core overlaps almost perfectly; the propoxy–morpholine tail fans out in every
+direction. That is the general picture for a drug-like molecule: a rigid core that defines it and flexible parts that
+adopt whatever the surroundings ask for — and the surroundings, in the end, are a protein pocket.
+"""
 
 # %%
 # Overlay the 5 lowest-energy conformers, aligned on the lowest one
@@ -181,6 +250,17 @@ calculations for each **atom type**. Families you will meet: **MMFF94** and **UF
 Let's *see* the torsion term with the MMFF94 energy profile of butane around its central C–C bond.
 """
 
+# %% [markdown]
+"""
+### Step 1 · A relaxed torsion scan
+
+Butane has one interesting bond: the central C–C. We turn it in 10° steps from −180° to 180° and ask the force field
+how much energy each angle costs. Two details make this a *relaxed* scan rather than a naive one: at each angle the
+dihedral is **held** with a stiff constraint (`MMFFAddTorsionConstraint`), and everything else — bond lengths, the
+other angles, the hydrogens — is **allowed to relax** (`Minimize`). Without the relaxation, the hydrogens of the two
+methyl groups would crash into each other at the eclipsed angles and the barriers would come out far too high.
+"""
+
 # %%
 butane = Chem.AddHs(Chem.MolFromSmiles("CCCC"))
 AllChem.EmbedMolecule(butane, randomSeed=1)
@@ -198,6 +278,16 @@ for ang in angles:
     profile.append(ff.CalcEnergy())
 profile = np.array(profile) - min(profile)
 
+# %% [markdown]
+"""
+### Step 2 · The profile
+
+Energy against dihedral angle, with the minimum set to zero. You know this curve from organic chemistry — but there it
+was a sketch, and here it is *computed*, from the torsion term of the force field plus the van der Waals repulsion of
+the hydrogens. The two together reproduce the textbook.
+"""
+
+# %%
 plt.figure(figsize=(6, 3.2))
 plt.plot(angles, profile, "o-")
 for x, lab in [(-180, "anti"), (-60, "gauche"), (0, "syn (eclipsed)"), (60, "gauche"), (180, "anti")]:
@@ -254,81 +344,203 @@ are drawn Z by default, and why a force field that got this term wrong would mis
 
 # %% [markdown]
 """
-## 3. Molecular dynamics in a nutshell
+## 3. Molecular dynamics: letting the molecule move
 
-MD integrates **Newton's equations** for every atom, with forces $\mathbf F_i = -\nabla_i E(\mathbf r)$ from the force field:
+### The idea in three sentences
 
-1. compute forces from current positions;
-2. update velocities and positions over a small time step $\Delta t$ (the *velocity-Verlet* or *leap-frog* integrator);
-3. repeat, saving snapshots ("frames") every few hundred steps → a **trajectory**.
+A force field (section 2) gives the energy of any arrangement of atoms — and therefore the **force** on every atom
+(force = minus the slope of the energy). Newton tells us what a force does: it accelerates the atom. So if we know all
+the positions now, we can compute all the forces, move every atom a tiny bit, and repeat. Do that a few million times
+and you have a **movie** of the molecule's life. That is molecular dynamics.
 
-Key practical ingredients:
+### The ingredients, in plain words
 
-| ingredient | why | typical choice |
-|---|---|---|
-| **time step** | must resolve the fastest motion (X–H stretch ~10 fs) | 2 fs with H-bond constraints |
-| **thermostat** | keeps the average temperature at $T$ (canonical ensemble) | Langevin dynamics, friction 1 ps⁻¹ |
-| **barostat** | keeps pressure at 1 bar (NPT) | Monte Carlo barostat |
-| **periodic boundary conditions** | fake an infinite system with a small box | cubic/rhombic dodecahedron box |
-| **long-range electrostatics** | Coulomb decays slowly | Particle Mesh Ewald (PME), cutoff 1 nm |
-| **explicit solvent** | water matters! | TIP3P water model + ions |
+| ingredient | what it is | why we need it | what we use |
+|---|---|---|---|
+| **time step** | how far forward each "repeat" moves the clock | the fastest motion (a bond to a hydrogen vibrates every ~10 fs) must be caught, or the atoms fly apart | 2 fs, with the X–H bonds frozen |
+| **thermostat** | a gentle random kick plus friction on every atom | keeps the temperature at 300 K, like a molecule in a warm bath | Langevin |
+| **barostat** | occasionally shrinks or grows the box | keeps the pressure at 1 bar, like a piston on a cylinder | Monte Carlo barostat |
+| **water** | explicit water molecules around the solute | a molecule in vacuum behaves nothing like one in solution | TIP3P |
+| **periodic box** | the box is copied infinitely in every direction; an atom leaving through one face comes back through the opposite one | fakes an infinite liquid with a few hundred molecules and no surface | a 3 nm cube |
+| **long-range electrostatics** | a trick for adding up charge interactions with all the infinite copies | Coulomb forces decay slowly, you cannot just cut them off | PME |
 
-A 2 fs step means 500,000 steps per nanosecond; a modern GPU does ~1 µs/day for a small protein. We will simulate
-**alanine dipeptide** (the "hydrogen atom of protein folding": one φ/ψ pair) in a box of ~750 water molecules.
+Numbers to keep in mind: a 2 fs step means **500 000 steps for one nanosecond**. A modern GPU manages about a
+microsecond per day for a small protein; a laptop CPU, a few nanoseconds. Today's simulation is 20 ps on CPU, 200 ps
+on GPU — short, on purpose, so that it finishes while you read.
+
+### The molecule: alanine dipeptide
+
+We simulate the smallest thing that behaves like a protein backbone: **one alanine**, capped at both ends (an acetyl
+group, ACE, and an N-methyl amide, NME) so that it has a real peptide bond on each side. Twenty-two atoms. It is called
+the "hydrogen atom of protein folding": every question about how a protein backbone moves can be asked here first.
 """
-
-# %%
-pdb_path = fetch("md/alanine_dipeptide_solvated.pdb")
-pdb = app.PDBFile(pdb_path)
-print("atoms:", pdb.topology.getNumAtoms(), "| residues:", [r.name for r in pdb.topology.residues()][:3],
-      "| waters:", sum(1 for r in pdb.topology.residues() if r.name == "HOH"))
-print("box vectors (nm):", [round(v.x, 2) for v in pdb.topology.getPeriodicBoxVectors()])
-
-# %%
-view = py3Dmol.view(width=500, height=350)
-view.addModel(open(pdb_path).read(), "pdb")
-view.setStyle({"resn": "HOH"}, {"line": {"opacity": 0.3}})
-view.setStyle({"not": {"resn": "HOH"}}, {"stick": {}})
-view.zoomTo({"not": {"resn": "HOH"}}); view.show()
 
 # %% [markdown]
 """
-### Building the simulation
+### Step 1 · Get the peptide
 
-The OpenMM workflow is always the same four objects: **ForceField → System → Integrator → Simulation**.
+The course ships alanine dipeptide in a PDB file that already contains some water. We keep only the **peptide** from it
+and add our own water in the next step, so that you see where every atom in the box comes from. `Modeller` is OpenMM's
+tool for editing a structure: adding or deleting atoms, water, ions, hydrogens.
 """
 
 # %%
-forcefield = app.ForceField("amber14-all.xml", "amber14/tip3p.xml")     # protein FF + water model
+pdb = app.PDBFile(fetch("md/alanine_dipeptide_solvated.pdb"))
+modeller = app.Modeller(pdb.topology, pdb.positions)
+modeller.deleteWater()
+peptide_atoms = modeller.topology.getNumAtoms()
+print("alanine dipeptide:", peptide_atoms, "atoms in", [r.name for r in modeller.topology.residues()])
 
+view = py3Dmol.view(width=450, height=300)
+with open("ala2_dry.pdb", "w") as f:
+    app.PDBFile.writeFile(modeller.topology, modeller.positions, f)
+view.addModel(open("ala2_dry.pdb").read(), "pdb")
+view.setStyle({"stick": {}, "sphere": {"scale": 0.25}})
+view.addResLabels({"resn": ["ACE", "ALA", "NME"]}, {"fontSize": 13, "backgroundOpacity": 0.6})
+view.zoomTo(); view.show()
+
+# %% [markdown]
+"""
+Three residues: the acetyl cap, the alanine, the N-methyl cap. Turn it with the mouse. The two bonds that matter for
+the whole session are the ones on either side of the alanine's central carbon (the Cα): everything else in this
+molecule is rigid, and those two bonds are where all the interesting motion happens. We will come back to them in
+section 5.
+
+### Step 2 · Add the water
+
+`addSolvent` puts the peptide in the centre of a cube and fills the rest with water molecules taken from a
+pre-equilibrated liquid — so the density is right from the start. A 3 nm cube holds about 870 waters. The force field
+has to be given here because the water model (TIP3P) is part of it.
+
+Why not simulate in vacuum and save all that computing? Because a molecule in vacuum is a different molecule: no
+hydrogen-bonding partners, no screening of charges, nothing to bump into. The water is not decoration; it is most of
+the physics, and most of the cost — 2600 of our 2620 atoms.
+"""
+
+# %%
+forcefield = app.ForceField("amber14-all.xml", "amber14/tip3p.xml")      # protein force field + water model
+modeller.addSolvent(forcefield, model="tip3p", boxSize=Vec3(3.0, 3.0, 3.0) * unit.nanometer)
+
+n_atoms = modeller.topology.getNumAtoms()
+n_waters = sum(1 for r in modeller.topology.residues() if r.name == "HOH")
+box = [v[i].value_in_unit(unit.nanometer) for i, v in enumerate(modeller.topology.getPeriodicBoxVectors())]
+density = n_waters * 18.015 / 6.022e23 / (np.prod(box) * 1e-21)
+print(f"{n_atoms} atoms = {peptide_atoms} peptide + {n_waters} waters × 3 | box {box} nm | density {density:.2f} g/cm³")
+
+with open("ala2_system.pdb", "w") as f:                # the starting structure: our topology for everything that follows
+    app.PDBFile.writeFile(modeller.topology, modeller.positions, f)
+
+# %% [markdown]
+"""
+### Step 3 · Look at what we built
+
+Two views of the same box. On the left, everything: the peptide as sticks in the middle, the water as thin lines, and
+the periodic box drawn in magenta. It should look *full* — a liquid, not a mist. On the right, only the peptide and the
+water molecules within 4 Å of it: its first hydration shell, the molecules it actually touches.
+"""
+
+# %%
+system_pdb = open("ala2_system.pdb").read()
+half = [b * 10 / 2 for b in box]                        # box centre, in Å (PDB units)
+
+view = py3Dmol.view(width=900, height=380, viewergrid=(1, 2))
+view.addModel(system_pdb, "pdb", viewer=(0, 0))
+view.setStyle({"resn": "HOH"}, {"line": {"colorscheme": "cyanCarbon", "opacity": 0.6}}, viewer=(0, 0))
+view.setStyle({"not": {"resn": "HOH"}}, {"stick": {"radius": 0.3}}, viewer=(0, 0))
+view.addBox({"center": {"x": half[0], "y": half[1], "z": half[2]},
+             "dimensions": {"w": box[0] * 10, "h": box[1] * 10, "d": box[2] * 10}, "color": "magenta", "wireframe": True}, viewer=(0, 0))
+view.zoomTo(viewer=(0, 0))
+
+view.addModel(system_pdb, "pdb", viewer=(0, 1))
+view.setStyle({}, {}, viewer=(0, 1))                   # hide everything, then show the peptide and its shell
+view.setStyle({"not": {"resn": "HOH"}}, {"stick": {}, "sphere": {"scale": 0.25}}, viewer=(0, 1))
+view.setStyle({"resn": "HOH", "within": {"distance": 4.0, "sel": {"not": {"resn": "HOH"}}}},
+              {"stick": {"radius": 0.12, "colorscheme": "cyanCarbon"}}, viewer=(0, 1))
+view.zoomTo({"not": {"resn": "HOH"}}, viewer=(0, 1))
+view.show()
+
+# %% [markdown]
+"""
+### Step 4 · The four OpenMM objects
+
+Every OpenMM simulation is built from the same four objects, always in this order. It is worth learning them by name,
+because every MD script you will ever read — including session 11 — is this pattern with different inputs.
+
+1. **`ForceField`** — the rulebook: which atom types exist and what their parameters are (section 2). Already created above.
+2. **`System`** — the rulebook *applied to our atoms*: the complete list of every bond, angle, torsion and non-bonded
+   pair in the box, with its parameters. `createSystem` builds it from the topology; the arguments say how to treat
+   the long-range electrostatics (`PME`), where to cut the short-range forces (1 nm), and which bonds to freeze
+   (`HBonds` — every bond to a hydrogen, which is what allows the 2 fs step). Then we *add a force* to it: the barostat,
+   which is not a physical interaction but is implemented as one.
+3. **`Integrator`** — the rule for advancing the clock. `LangevinMiddleIntegrator(300 K, 1/ps, 2 fs)` reads: keep the
+   temperature at 300 K, with a friction of 1 per picosecond (how strongly the "bath" is coupled), stepping 2 fs at a time.
+   The thermostat is built into the integrator.
+4. **`Simulation`** — glues the three together with a set of starting positions, and picks the fastest platform available
+   (CUDA on a GPU, otherwise CPU). This is the object we actually drive.
+"""
+
+# %%
 system = forcefield.createSystem(
-    pdb.topology,
+    modeller.topology,
     nonbondedMethod=app.PME,                 # long-range electrostatics
-    nonbondedCutoff=1.0 * unit.nanometer,
-    constraints=app.HBonds,                  # rigid X–H bonds allow a 2 fs step
+    nonbondedCutoff=1.0 * unit.nanometer,    # short-range forces cut off at 1 nm
+    constraints=app.HBonds,                  # rigid X–H bonds -> 2 fs step is safe
 )
-system.addForce(mm.MonteCarloBarostat(1.0 * unit.bar, 300 * unit.kelvin, 25))   # NPT ensemble
+system.addForce(mm.MonteCarloBarostat(1.0 * unit.bar, 300 * unit.kelvin, 25))   # constant pressure (NPT)
 
 integrator = mm.LangevinMiddleIntegrator(300 * unit.kelvin, 1.0 / unit.picosecond, 2.0 * unit.femtoseconds)
-integrator.setRandomNumberSeed(1)
+integrator.setRandomNumberSeed(1)                                                # reproducible thermostat noise
 
-simulation = app.Simulation(pdb.topology, system, integrator)
-simulation.context.setPositions(pdb.positions)
+simulation = app.Simulation(modeller.topology, system, integrator)
+simulation.context.setPositions(modeller.positions)
+
 print("running on platform:", simulation.context.getPlatform().getName())
-print("energy terms in the System:", [f.__class__.__name__ for f in system.getForces()])
+print("force terms in the System:", [f.__class__.__name__ for f in system.getForces()])
+
+# %% [markdown]
+"""
+Read the list of force terms and match it with the formula of section 2: `HarmonicBondForce` is the stretch term,
+`HarmonicAngleForce` the bend, `PeriodicTorsionForce` the torsion, `NonbondedForce` is van der Waals **and**
+electrostatics together. `CMMotionRemover` stops the whole box from drifting; `MonteCarloBarostat` is our piston.
+
+### Step 5 · Minimise first
+
+The starting structure has water molecules that were dropped in from a template and may sit too close to the peptide
+or to each other. Two atoms 0.5 Å apart carry an enormous repulsive force; start the dynamics like that and they shoot
+off at thousands of metres per second, and the simulation "explodes" (you would see `NaN` in the energies).
+
+**Minimisation** slides every atom downhill in energy — no temperature, no time, just "relax" — until the worst
+clashes are gone. Watch the potential energy: it should drop by a lot, and the structure barely changes to the eye.
+"""
 
 # %%
-# Energy minimisation removes bad contacts from the starting structure
-state0 = simulation.context.getState(getEnergy=True)
+E0 = simulation.context.getState(getEnergy=True).getPotentialEnergy().value_in_unit(unit.kilojoule_per_mole)
 simulation.minimizeEnergy(maxIterations=500)
-state1 = simulation.context.getState(getEnergy=True)
-print(f"potential energy before: {state0.getPotentialEnergy().value_in_unit(unit.kilojoule_per_mole):.0f} kJ/mol")
-print(f"potential energy after : {state1.getPotentialEnergy().value_in_unit(unit.kilojoule_per_mole):.0f} kJ/mol")
+E1 = simulation.context.getState(getEnergy=True).getPotentialEnergy().value_in_unit(unit.kilojoule_per_mole)
+print(f"potential energy before minimisation: {E0:12,.0f} kJ/mol")
+print(f"potential energy after  minimisation: {E1:12,.0f} kJ/mol")
+
+# %% [markdown]
+"""
+### Step 6 · Run it — and record the movie
+
+A simulation only produces what you ask it to record. **Reporters** are OpenMM's recorders, and we attach three:
+
+- a **`DCDReporter`** that writes the positions of every atom to a file every `report_every` steps — each saved set of
+  positions is a **frame**, and the file of frames is the **trajectory**. This is the movie. We save 100 frames;
+- a **`StateDataReporter`** to a CSV file with the temperature, energy, volume and speed at the same moments — the
+  simulation's dashboard, which section 5 reads first;
+- a second `StateDataReporter` to the screen, five times during the run, so you can see it is alive.
+
+Before starting, `setVelocitiesToTemperature` gives every atom a random velocity drawn from the 300 K distribution
+(otherwise the atoms would start frozen at 0 K). Then `simulation.step(n_steps)` is the whole of molecular dynamics:
+compute forces, move, repeat, `n_steps` times.
+"""
 
 # %%
-# Production run. Reporters write the trajectory (DCD) and a log of thermodynamic quantities.
-n_steps = 100_000 if GPU else 10_000          # 200 ps on GPU, 20 ps on CPU (≈1–2 min)
-report_every = 200                            # save a frame every 0.4 ps
+n_steps = 100_000 if GPU else 10_000         # 200 ps on a GPU, 20 ps on CPU (about 2 minutes)
+report_every = n_steps // 100                # -> 100 frames whatever the length of the run
+dt_frame = report_every * 0.002              # picoseconds between two saved frames
 
 simulation.reporters.clear()
 simulation.reporters.append(app.DCDReporter("ala2_traj.dcd", report_every))
@@ -340,89 +552,315 @@ simulation.reporters.append(app.StateDataReporter(sys.stdout, n_steps // 5, step
 simulation.context.setVelocitiesToTemperature(300 * unit.kelvin, 1)
 t0 = time.time()
 simulation.step(n_steps)
-print(f"\nsimulated {n_steps * 2 / 1000:.0f} ps in {time.time() - t0:.0f} s")
+print(f"\nsimulated {n_steps * 2 / 1000:.0f} ps in {time.time() - t0:.0f} s  ->  100 frames, {dt_frame:.1f} ps apart, in ala2_traj.dcd")
 
-# Save the final structure (topology for the analysis tools)
-with open("ala2_final.pdb", "w") as f:
+with open("ala2_final.pdb", "w") as f:       # the last frame, as an ordinary PDB file
     app.PDBFile.writeFile(simulation.topology, simulation.context.getState(getPositions=True).getPositions(), f)
 
 # %% [markdown]
 """
-## 4. Analysing the trajectory
+The printed lines are the simulation's heartbeat: the temperature should sit near 300 K from the first report onwards
+(the thermostat works fast), and the speed, in nanoseconds per simulated day, tells you what a longer run would cost.
+On two CPU cores expect ~20 ns/day; on a T4 GPU, several hundred.
 
-**MDAnalysis** loads a topology (PDB) plus a trajectory (DCD) into a `Universe`. Atoms are selected with a
-VMD-like selection language; analysis classes iterate over frames.
+## 4. Watch it
+
+### Step 1 · Load the trajectory
+
+**MDAnalysis** is the library for *reading* simulations. It needs two things: a **topology** (which atoms exist and
+how they are connected — our starting PDB) and a **trajectory** (where they were at each frame — the DCD). Together
+they make a `Universe`. Atoms are picked with a small selection language, close to plain English:
+`"not resname HOH"` is everything that is not water.
+"""
+
+# %%
+u = mda.Universe("ala2_system.pdb", "ala2_traj.dcd")
+peptide = u.select_atoms("not resname HOH")
+water = u.select_atoms("resname HOH")
+print(u, "|", len(u.trajectory), "frames,", f"{dt_frame:.1f} ps apart")
+print(peptide.n_atoms, "peptide atoms |", water.n_residues, "water molecules")
+
+# %% [markdown]
+"""
+### Step 2 · Hold the camera still
+
+A movie of the raw trajectory is disappointing: the peptide tumbles and drifts through the box, so all you see is a
+molecule slowly rotating. What we want to see is how it **changes shape**. So before filming we **align** every frame
+onto the first one, using the peptide backbone as the anchor: each frame is rotated and shifted so that the backbone
+atoms sit as close as possible to where they were in frame 0. Rotation and drift disappear; only the internal motion
+is left. This is what every MD movie you have ever seen does, and it is also the first step of the RMSD calculation
+in section 5.
+
+`in_memory=True` means the aligned coordinates replace the ones read from the file, for the rest of the notebook.
+"""
+
+# %%
+align.AlignTraj(u, u, select="not resname HOH and backbone", in_memory=True).run()
+print("all", len(u.trajectory), "frames aligned on the peptide backbone of frame 0")
+
+# %% [markdown]
+"""
+### Step 3 · The movie of the peptide
+
+We write the peptide's coordinates in every frame to one PDB file (a *multi-model* PDB: 100 structures one after the
+other), and hand it to py3Dmol as an animation. **Press play** with the ▶ that appears; drag to rotate; scroll to zoom.
+
+What to look for: the two caps and the alanine's methyl swing around; the backbone wobbles; the N–H and C=O groups
+vibrate. What you will probably *not* see in 20 ps is a real change of shape — a flip of the backbone from one
+conformation to another. That absence is a lesson in itself, and section 5 puts a number on it.
+"""
+
+# %%
+def write_movie(atoms, filename, max_frames=100):
+    """Write an AtomGroup at up to max_frames evenly spaced frames as a multi-model PDB (for py3Dmol)."""
+    frames = np.linspace(0, len(u.trajectory) - 1, min(max_frames, len(u.trajectory))).astype(int)
+    with mda.Writer(filename, atoms.n_atoms, multiframe=True) as w:
+        for fr in frames:
+            u.trajectory[fr]
+            w.write(atoms)
+    return open(filename).read()
+
+movie_peptide = write_movie(peptide, "movie_peptide.pdb")
+
+view = py3Dmol.view(width=550, height=400)
+view.addModelsAsFrames(movie_peptide, "pdb")
+view.setStyle({"stick": {}, "sphere": {"scale": 0.25}})
+view.animate({"loop": "backAndForth", "interval": 60})
+view.zoomTo(); view.show()
+
+# %% [markdown]
+"""
+### Step 4 · The same movie with the water it touches
+
+Now add the water — but not all 870 molecules, which would hide the peptide. We take the molecules that were within
+4 Å of the peptide **in the first frame** and follow *those same molecules* through the run. Because the camera is
+fixed on the peptide, you see them do what liquid water does: rattle in place for a moment, then wander off and get
+replaced by others (which we are not drawing). A water molecule stays in the first shell of a small solute for only a
+few picoseconds. Nothing is broken when they leave — that *is* the liquid.
+"""
+
+# %%
+u.trajectory[0]
+shell = u.select_atoms("byres (resname HOH and around 4 (not resname HOH))")
+print(shell.n_residues, "water molecules within 4 Å of the peptide in frame 0")
+
+movie_shell = write_movie(peptide + shell, "movie_shell.pdb")
+view = py3Dmol.view(width=550, height=400)
+view.addModelsAsFrames(movie_shell, "pdb")
+view.setStyle({"resn": "HOH"}, {"stick": {"radius": 0.1, "colorscheme": "cyanCarbon"}})
+view.setStyle({"not": {"resn": "HOH"}}, {"stick": {}, "sphere": {"scale": 0.25}})
+view.animate({"loop": "backAndForth", "interval": 60})
+view.zoomTo({"not": {"resn": "HOH"}}); view.show()
+
+# %% [markdown]
+"""
+### Step 5 · Any single frame, on demand
+
+The movie shows everything at once; sometimes you want to stop at one moment and look. Move the slider: the viewer
+redraws that frame, and the text reports the simulation time. (Section 5 attaches plots to this same slider.)
+"""
+
+# %%
+def show_frame(frame):
+    u.trajectory[frame]
+    peptide.write("_frame.pdb")
+    v = py3Dmol.view(width=450, height=320)
+    v.addModel(open("_frame.pdb").read(), "pdb")
+    v.setStyle({"stick": {}, "sphere": {"scale": 0.25}})
+    v.zoomTo(); v.show()
+    print(f"frame {frame} of {len(u.trajectory) - 1}  =  t = {frame * dt_frame:.1f} ps")
+
+interact(show_frame, frame=(0, len(u.trajectory) - 1, 1));
+
+# %% [markdown]
+"""
+## 5. Measure it
+
+Watching is necessary but not sufficient: your eye cannot tell 300 K from 320 K, or 1.2 Å of motion from 1.8. Three
+kinds of numbers, from the coarsest to the finest.
+
+### 5.1 Is the simulation healthy?
+
+Before analysing anything, read the dashboard. Three curves from the CSV log, and what a healthy run looks like:
+
+- **Temperature**: climbs to 300 K within the first picosecond (the thermostat) and then fluctuates around it. The
+  fluctuations are real physics — a small system has a visible temperature noise, about ±5–10 K here — not an error.
+- **Potential energy**: drifts down at the start as the box settles, then flattens. A steady *upward* drift, or spikes,
+  means something is wrong.
+- **Box volume**: the barostat's work. It should hover around 26–27 nm³ (the 3 nm cube was already the right density,
+  so it only breathes). If it collapsed or blew up, the starting density was wrong.
+
+The first few picoseconds, while these curves are still moving, are **equilibration**; you do not analyse them. Real
+studies equilibrate for nanoseconds and throw that part away.
 """
 
 # %%
 log = pd.read_csv("ala2_log.csv")
 log.columns = [c.split(" (")[0].strip('#"') for c in log.columns]
 fig, axes = plt.subplots(1, 3, figsize=(13, 3))
-axes[0].plot(log["Time"], log["Temperature"]); axes[0].axhline(300, c="r", ls="--"); axes[0].set_ylabel("T (K)")
-axes[1].plot(log["Time"], log["Potential Energy"]); axes[1].set_ylabel("E_pot (kJ/mol)")
-axes[2].plot(log["Time"], log["Box Volume"]); axes[2].set_ylabel("volume (nm³)")
+axes[0].plot(log["Time"], log["Temperature"]); axes[0].axhline(300, c="r", ls="--"); axes[0].set_ylabel("temperature (K)")
+axes[1].plot(log["Time"], log["Potential Energy"]); axes[1].set_ylabel("potential energy (kJ/mol)")
+axes[2].plot(log["Time"], log["Box Volume"]); axes[2].set_ylabel("box volume (nm³)")
 for ax in axes: ax.set_xlabel("time (ps)")
 plt.tight_layout(); plt.show()
-
-# %%
-u = mda.Universe(pdb_path, "ala2_traj.dcd")
-print(u, "|", len(u.trajectory), "frames")
-peptide = u.select_atoms("not resname HOH")
-print(peptide.n_atoms, "peptide atoms;", u.select_atoms("resname HOH").n_residues, "waters")
-
-# %%
-# RMSD of the peptide heavy atoms relative to the first frame
-from MDAnalysis.analysis import rms, align
-heavy_sel = "not resname HOH and not name H*"
-R = rms.RMSD(u, u, select=heavy_sel, ref_frame=0).run()
-rmsd = R.results.rmsd            # columns: frame, time, RMSD
-plt.figure(figsize=(6, 3))
-plt.plot(np.arange(len(rmsd)) * report_every * 0.002, rmsd[:, 2])
-plt.xlabel("time (ps)"); plt.ylabel("heavy-atom RMSD to frame 0 (Å)")
-plt.show()
+settled = log[log["Time"] > 2]                  # skip the first 2 ps of equilibration
+print(f"after 2 ps: temperature {settled['Temperature'].mean():.0f} ± {settled['Temperature'].std():.0f} K | "
+      f"volume {settled['Box Volume'].mean():.1f} ± {settled['Box Volume'].std():.2f} nm³ | speed {log['Speed'].iloc[-1]:.0f} ns/day")
 
 # %% [markdown]
 """
-### The Ramachandran plot
+### 5.2 How much does the molecule move? The RMSD
 
-For a peptide, the two backbone dihedrals **φ** (C–N–Cα–C) and **ψ** (N–Cα–C–N) summarise the conformation.
-Alanine dipeptide visits a few basins: the extended β/PPII region (φ ≈ −70…−150°, ψ ≈ +120…180°), the right-handed
-α-helix region (φ ≈ −60°, ψ ≈ −45°), and — rarely — the left-handed αL region (φ > 0). How many basins does your short
-simulation explore?
+The **root-mean-square deviation** answers one question: *how far, on average, are the atoms from where they were in
+the reference frame?* For each frame, the structure is superposed on the reference (as in the movie), the distance
+each chosen atom moved is squared, averaged over the atoms, and square-rooted. One number per frame, in ångström.
+
+Which atoms you choose changes the answer, and that is the point of the widget below:
+
+- the **backbone** (N, Cα, C, O — the chain itself) moves least: it is held by the peptide bonds;
+- **all heavy atoms** adds the methyl groups, which rotate freely — more motion;
+- **everything including hydrogens** adds the fastest, least interesting vibrations — more still;
+- **just the Cα** is a single atom — try it, and read what the widget says instead of a curve.
+
+The **reference frame** matters too. Frame 0 is the usual choice ("how far from the start?"), but a frame in the
+middle of the run gives a different curve — a structure is never "far" from itself. Pick the atoms and the reference,
+and read the mean and maximum printed below the plot.
 """
 
 # %%
-from MDAnalysis.analysis.dihedrals import Ramachandran
+SELECTIONS = {
+    "backbone (N, Cα, C, O)": "not resname HOH and backbone",
+    "all heavy atoms": "not resname HOH and not name H*",
+    "everything, hydrogens too": "not resname HOH",
+    "just the Cα": "not resname HOH and name CA",
+}
+time_ps = np.arange(len(u.trajectory)) * dt_frame
+
+def rmsd_curve(selection, reference_frame=0):
+    """RMSD (Å) of the chosen atoms to the chosen reference frame, after optimal superposition."""
+    return rms.RMSD(u, u, select=SELECTIONS[selection], ref_frame=reference_frame).run().results.rmsd[:, 2]
+
+def show_rmsd(selection, reference_frame=0):
+    n_sel = u.select_atoms(SELECTIONS[selection]).n_atoms
+    if n_sel < 3:
+        print(f"{n_sel} atom selected. The superposition step can always put 1 atom (or 2) exactly onto the reference,\n"
+              "so the RMSD is zero by construction and the fit itself is undefined - MDAnalysis returns NaN.\n"
+              "You need at least three atoms that are not on a line before 'how much did it move' means anything.")
+        return
+    y = rmsd_curve(selection, reference_frame)
+    plt.figure(figsize=(7, 3))
+    plt.plot(time_ps, y)
+    plt.axvline(reference_frame * dt_frame, c="r", ls="--", label=f"reference = frame {reference_frame}")
+    plt.xlabel("time (ps)"); plt.ylabel("RMSD (Å)"); plt.title(selection); plt.legend(); plt.show()
+    print(f"{u.select_atoms(SELECTIONS[selection]).n_atoms} atoms | mean RMSD {y.mean():.2f} Å | max {y.max():.2f} Å")
+
+interact(show_rmsd, selection=list(SELECTIONS), reference_frame=(0, len(u.trajectory) - 1, 1));
+
+# %% [markdown]
+"""
+For a molecule this small and this rigid, an RMSD of about half an ångström on the heavy atoms (a little over one
+with the hydrogens included) means "wobbling around one shape"; you would need a jump to 2–3 Å to say the shape
+changed. Keep those numbers in mind for session 11, where the same
+measurement on a ligand in a protein pocket decides whether a docking pose was right.
+
+### 5.3 Two angles say it all: the Ramachandran plot
+
+**Why do we need this?** The RMSD says *how much* the molecule moved, not *where it went*. And the raw trajectory —
+2620 atoms × 3 coordinates × 100 frames, three-quarters of a million numbers — is unreadable. We need a small number
+of quantities that capture *the shape*. Choosing them well is most of the art of analysing a simulation.
+
+For a peptide backbone the choice is made for us by chemistry. Bond lengths do not change; bond angles hardly change;
+the peptide bond itself (C–N) is flat and rigid. The **only real freedom** is rotation around the two bonds on either
+side of each Cα — the ones we pointed at in section 3:
+
+- **φ (phi)**: rotation about the N–Cα bond;
+- **ψ (psi)**: rotation about the Cα–C bond.
+
+Two numbers per residue describe the shape of the whole backbone. For our single alanine, **the entire conformation is
+one point in a square from −180° to 180°** in each direction. That square is the **Ramachandran plot** (1963).
+
+Two things make it more than a convenient plot. First, most of the square is *forbidden*: for most (φ, ψ) pairs, atoms
+of neighbouring residues crash into each other. The allowed regions are a few islands, and they have names — the
+**β** region (top left, extended chain, φ ≈ −120°, ψ ≈ +130°), the **right-handed α-helix** region (centre left,
+φ ≈ −60°, ψ ≈ −45°), and a small **left-handed α** island (top right, φ > 0). Every protein structure ever solved has
+its residues sitting on those islands; when crystallographers validate a new structure, the Ramachandran plot is the
+first thing they check. Second, for us: the plot turns "did the molecule change shape?" into "did the point jump to a
+different island?" — a question with a clear answer.
+
+The code asks MDAnalysis for φ and ψ of the alanine in every frame (`Ramachandran`), then draws each frame as a point
+coloured by time.
+"""
+
+# %%
 rama = Ramachandran(u.select_atoms("resname ALA")).run()
-phi_psi = rama.results.angles[:, 0, :]          # (frames, 2)
+phi_psi = rama.results.angles[:, 0, :]          # shape (frames, 2): one (phi, psi) pair per frame
+phi, psi = phi_psi[:, 0], phi_psi[:, 1]
 
-fig, ax = plt.subplots(figsize=(5, 5))
-sc = ax.scatter(phi_psi[:, 0], phi_psi[:, 1], c=np.arange(len(phi_psi)), cmap="viridis", s=12)
+fig, ax = plt.subplots(figsize=(5.5, 5))
+for (x0, x1, y0, y1, name) in [(-180, -45, 90, 180, "β / PPII"), (-100, -30, -80, 0, "right-handed α"), (30, 100, 0, 90, "left-handed α")]:
+    ax.add_patch(plt.Rectangle((x0, y0), x1 - x0, y1 - y0, fc="lightgray", ec="none", alpha=0.5)); ax.text(x0 + 5, y1 - 15, name, fontsize=8, color="dimgray")
+sc = ax.scatter(phi, psi, c=time_ps, cmap="viridis", s=14, zorder=3)
 ax.set_xlim(-180, 180); ax.set_ylim(-180, 180); ax.axhline(0, c="gray", lw=0.5); ax.axvline(0, c="gray", lw=0.5)
-ax.set_xlabel("φ (°)"); ax.set_ylabel("ψ (°)"); ax.set_title("Ramachandran plot (colour = time)")
-plt.colorbar(sc, label="frame"); plt.show()
+ax.set_xlabel("φ (°)  — rotation about N–Cα"); ax.set_ylabel("ψ (°)  — rotation about Cα–C"); ax.set_title("Ramachandran plot of our alanine (colour = time)")
+plt.colorbar(sc, label="time (ps)"); plt.show()
 
-# %%
-plt.figure(figsize=(7, 3))
-plt.plot(phi_psi[:, 0], label="φ"); plt.plot(phi_psi[:, 1], label="ψ")
-plt.xlabel("frame"); plt.ylabel("angle (°)"); plt.legend(); plt.show()
-
-# %%
-# Look at a few frames of the peptide (water hidden)
-view = py3Dmol.view(width=500, height=350)
-for k, frame in enumerate(np.linspace(0, len(u.trajectory) - 1, 5).astype(int)):
-    u.trajectory[frame]
-    peptide.write(f"frame_{k}.pdb")
-    view.addModel(open(f"frame_{k}.pdb").read(), "pdb")
-    view.setStyle({"model": k}, {"stick": {"colorscheme": ["redCarbon", "orangeCarbon", "yellowCarbon", "greenCarbon", "blueCarbon"][k]}})
-view.zoomTo(); view.show()
+in_beta = ((phi < -45) & (psi > 90)).mean(); in_alpha = ((phi > -100) & (phi < -30) & (psi > -80) & (psi < 0)).mean()
+print(f"frames in the β/PPII island: {in_beta:.0%}   in the right-handed α island: {in_alpha:.0%}")
 
 # %% [markdown]
 """
-### Exercise 4.1
-1. Compute the fraction of frames in the α-helical region (−100° < φ < −30° and −80° < ψ < 0°) and in the β/PPII region (φ < −30° and ψ > 90°).
-2. What is the average box volume, and hence the water density in g/cm³ (count the waters with `u.select_atoms("resname HOH").n_residues`; M = 18.015 g/mol)? Is it close to 1.0?
-3. (If you have a GPU) rerun the simulation at 400 K. How does the Ramachandran plot change?
+Read your plot. The points form a small cloud on **one** island — most likely β/PPII, the extended shape the peptide
+started in. The cloud's size is the wobbling the RMSD measured; the *absence* of points on the α island is the fact the
+RMSD could not tell you: in 20 ps at 300 K, alanine dipeptide did **not** cross to the other stable shape, although
+the α conformation is perfectly real (it is what every helix in every protein is made of) and only a few kJ/mol away.
+
+That is the **sampling problem** in one picture. The crossing happens on the scale of hundreds of picoseconds to
+nanoseconds — ten to a hundred times longer than we ran. A simulation shows you only what had time to happen, and
+"the molecule stayed put" may mean "the molecule is stable" or may mean "we did not wait". Distinguishing the two is
+what long runs, many repeats and the enhanced-sampling methods of Lecture 5 are for. If you have a GPU, the 200 ps run
+sometimes catches a crossing: look for a second cloud.
+
+### 5.4 The two angles along time — and every frame on demand
+
+The same two numbers, now against time (hover to read the exact values; drag on the axis to zoom), and below it the
+slider from section 4 again, this time showing **where the frame sits on the Ramachandran plot** next to the 3D
+structure. Move the slider to the frames where φ or ψ jumps and look at what the molecule did.
+"""
+
+# %%
+fig = go.Figure()
+fig.add_trace(go.Scatter(x=time_ps, y=phi, name="φ", mode="lines+markers", marker=dict(size=4)))
+fig.add_trace(go.Scatter(x=time_ps, y=psi, name="ψ", mode="lines+markers", marker=dict(size=4)))
+fig.add_trace(go.Scatter(x=time_ps, y=rmsd_curve("all heavy atoms"), name="heavy-atom RMSD (Å, right axis)", mode="lines",
+                         line=dict(dash="dot", color="gray"), yaxis="y2"))
+fig.update_layout(height=360, width=850, xaxis_title="time (ps)", yaxis_title="angle (°)", hovermode="x unified",
+                  yaxis2=dict(title="RMSD (Å)", overlaying="y", side="right", range=[0, 3]),
+                  legend=dict(orientation="h", y=1.15), margin=dict(t=30, b=40), xaxis=dict(rangeslider=dict(visible=True)))
+fig.show()
+
+# %% [markdown]
+"""
+And the frame explorer: the slider picks a frame, the plot shows where that frame sits on the Ramachandran map (red
+dot), and the viewer shows the molecule at that moment. Go to the extremes of the cloud and compare the two shapes.
+"""
+
+# %%
+def explore(frame):
+    fig, ax = plt.subplots(figsize=(4, 4))
+    ax.scatter(phi, psi, s=8, c="lightgray"); ax.scatter(phi[frame], psi[frame], s=120, c="red", zorder=3)
+    ax.set_xlim(-180, 180); ax.set_ylim(-180, 180); ax.axhline(0, c="gray", lw=0.5); ax.axvline(0, c="gray", lw=0.5)
+    ax.set_xlabel("φ (°)"); ax.set_ylabel("ψ (°)"); ax.set_title(f"frame {frame}  (t = {frame * dt_frame:.1f} ps)"); plt.show()
+    print(f"φ = {phi[frame]:7.1f}°   ψ = {psi[frame]:7.1f}°")
+    show_frame(frame)
+
+interact(explore, frame=(0, len(u.trajectory) - 1, 1));
+
+# %% [markdown]
+"""
+### Exercise 5.1
+1. In the RMSD widget, why does "just the Cα" give no curve? What is the smallest number of atoms for which an RMSD after superposition can be non-zero, and why?
+2. Compute the water density from the average box volume in `log` (count the waters with `water.n_residues`; M = 18.015 g/mol; 1 nm³ = 10⁻²¹ cm³). Is it close to 1.0 g/cm³? Why is it a little below?
+3. (If you have a GPU) rerun the simulation at **400 K**: change the temperature in *both* the integrator and the barostat. How does the Ramachandran cloud change, and does the point visit the α island now?
 """
 
 # %%
@@ -434,27 +872,34 @@ view.zoomTo(); view.show()
 """
 <details><summary><b>Solution (1–2)</b></summary>
 
-```python
-phi, psi = phi_psi[:, 0], phi_psi[:, 1]
-alpha = ((phi > -100) & (phi < -30) & (psi > -80) & (psi < 0)).mean()
-beta = ((phi < -30) & (psi > 90)).mean()
-print(f"alpha: {alpha:.0%}   beta/PPII: {beta:.0%}")
+1. Superposition removes translation and rotation. A single atom can always be moved exactly onto its reference
+   position, so its RMSD is zero by construction; two atoms can always be aligned too (rotate the pair onto the
+   reference pair) — three non-collinear atoms are the smallest set with a non-zero RMSD, because a triangle can change
+   its shape.
 
-n_wat = u.select_atoms("resname HOH").n_residues
+```python
 V_cm3 = log["Box Volume"].mean() * 1e-21           # nm^3 -> cm^3
-mass_g = n_wat * 18.015 / 6.022e23
+mass_g = water.n_residues * 18.015 / 6.022e23
 print(f"density ≈ {mass_g / V_cm3:.3f} g/cm3")
 ```
+2. About 0.97 g/cm³. Slightly below 1.0 because the volume we divide by includes the space taken by the peptide,
+   and because TIP3P water at 300 K and 1 bar is itself a little less dense than real water.
 </details>
 """
 
 # %% [markdown]
 """
-## 5. Optional (GPU): a real protein — the villin headpiece
+## 6. Optional (GPU): a real protein — the villin headpiece
 
 The 35-residue villin headpiece (HP35) is a classic fast-folding mini-protein. The file below (from the OpenMM tutorials)
 is already solvated. It is 8867 atoms against the dipeptide's 2269, and that is the point of the section: the same six
 lines of OpenMM, a system four times larger.
+
+Everything you learned on the dipeptide transfers directly: the same four objects, the same reporters, the same
+MDAnalysis analysis. Two additions appear because this is a protein: the RMSD is now measured on the **Cα atoms only**
+(one per residue — the standard choice for proteins, because it follows the fold and ignores the side chains), and a
+new quantity, the **RMSF** — the root-mean-square *fluctuation* of each residue around its average position, which
+tells you *which parts* of the protein move (loops and termini) and which are rigid (the helices).
 
 On a T4 GPU the 100 ps take about a minute. On two CPU cores this system runs at roughly **4.6 ns/day**, so the same
 100 ps take **about half an hour** — which is why the cell only runs when a GPU is present. Set `RUN_PROTEIN = True`
@@ -495,7 +940,7 @@ else:
 
 # %% [markdown]
 """
-## 6. Where MD sits in computer-aided drug design
+## 7. Where MD sits in computer-aided drug design
 
 | task | method | what you learn |
 |---|---|---|
